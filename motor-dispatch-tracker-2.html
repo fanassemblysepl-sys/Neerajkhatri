@@ -268,7 +268,7 @@ input:checked + .slider::before{transform:translateX(20px);}
 <header class="app-header">
   <div class="brand">
     <span class="logo">⚙️</span>
-    <span>Motor Dispatch Tracker<span class="sub">मोटर डिस्पैच ट्रैकर</span></span>
+    <span>Motor Dispatch Tracker<span class="sub">Barcode &amp; Warranty Management</span></span>
   </div>
   <div class="header-actions">
     <button id="themeToggleBtn" title="Toggle Theme">🌙</button>
@@ -280,7 +280,7 @@ input:checked + .slider::before{transform:translateX(20px);}
 <section class="view active" id="view-scanner">
   <div class="card">
     <h2>📷 Scan Motor Barcode</h2>
-    <div class="subtitle">Camera se motor pe laga barcode scan karein — auto detect hoga</div>
+    <div class="subtitle">Scan the barcode on the motor using your camera — detection is automatic</div>
     <div class="scanner-wrap">
       <video id="video" playsinline autoplay muted></video>
       <div class="scan-overlay">
@@ -302,7 +302,7 @@ input:checked + .slider::before{transform:translateX(20px);}
     <div class="scan-status" id="scanStatus">Initializing camera…</div>
     <div class="field-row" style="margin-top:10px;">
       <div class="full">
-        <label>⌨️ Ya barcode number type karein (agar camera scan na ho)</label>
+        <label>⌨️ Or enter the barcode number manually (if the camera cannot scan it)</label>
         <div class="barcode-input-row">
           <input type="text" id="manualBarcodeInput" placeholder="e.g. 784100481627" inputmode="numeric">
           <button class="regen-btn" id="manualBarcodeBtn" title="Submit">✅</button>
@@ -327,19 +327,19 @@ input:checked + .slider::before{transform:translateX(20px);}
 
     <div class="field-row">
       <div class="full">
-        <label>Motor Name / Model (मोटर का नाम)</label>
+        <label>Motor Name / Model</label>
         <input type="text" id="resultMotorName" placeholder="e.g. 1HP Induction Motor">
       </div>
       <div class="full">
-        <label>Quantity (मात्रा)</label>
+        <label>Quantity</label>
         <input type="number" id="resultQty" min="1" placeholder="e.g. 1">
       </div>
       <div class="full">
-        <label>Sales Person (सेल्स पर्सन)</label>
+        <label>Sales Person</label>
         <input type="text" id="resultSalesPerson" placeholder="e.g. Shubham Sir">
       </div>
       <div class="full">
-        <label>Dispatch Date (डिस्पैच तारीख)</label>
+        <label>Dispatch Date</label>
         <input type="date" id="resultDispatchDate">
         <div class="unlock-row hidden" id="unlockRow">
           <button class="btn btn-outline btn-sm" id="unlockDateBtn">🔓 Unlock to correct date</button>
@@ -359,7 +359,7 @@ input:checked + .slider::before{transform:translateX(20px);}
 
   <div class="card">
     <h2>📦 Bulk Generate Motor Barcodes</h2>
-    <div class="subtitle">Ek saath sainkdon/hazaron unique barcode banayein aur print karein (bulk mein barcode banayein)</div>
+    <div class="subtitle">Generate and print hundreds or thousands of unique barcodes at once (bulk barcode generation)</div>
     <div class="field-row">
       <div>
         <label>Quantity (kitne barcode?)</label>
@@ -391,6 +391,10 @@ input:checked + .slider::before{transform:translateX(20px);}
       <div class="full">
         <label>Quantity</label>
         <input type="number" id="genQty" min="1" value="1" placeholder="e.g. 1">
+      </div>
+      <div class="full">
+        <label>Sales Person (if already known)</label>
+        <input type="text" id="genSalesPerson" placeholder="e.g. Priyanka Ma'am">
       </div>
       <div class="full">
         <label>Code Type</label>
@@ -510,7 +514,7 @@ input:checked + .slider::before{transform:translateX(20px);}
   </div>
   <div class="card">
     <h3>📤 Telegram Integration</h3>
-    <p class="text-soft" style="margin-bottom:10px;">Motor details + barcode image seedha Telegram par bhejein. Pehle apna Bot Token aur Chat ID daalein (@BotFather se bot banayein, @userinfobot se apna Chat ID lein).</p>
+    <p class="text-soft" style="margin-bottom:10px;">Send motor details and the barcode/QR image directly to Telegram. First enter your Bot Token and Chat ID below (create a bot via @BotFather, and get your Chat ID from @userinfobot).</p>
     <div class="field-row">
       <div class="full">
         <label>Telegram Bot Token</label>
@@ -537,14 +541,11 @@ input:checked + .slider::before{transform:translateX(20px);}
     </p>
   </div>
   <div class="card">
-    <h3>ℹ️ How This Works / यह कैसे काम करता है</h3>
+    <h3>ℹ️ How This Works</h3>
     <p class="text-soft">
       1. <strong>Generate</strong> a barcode for each new motor and print/stick the label on it (before dispatch).<br>
       2. When the motor is actually dispatched, <strong>scan its barcode</strong> — the dispatch date is recorded automatically.<br>
-      3. Scan the <strong>same barcode again anytime</strong> and its dispatch date shows up instantly.<br><br>
-      1. हर नए मोटर के लिए बारकोड <strong>जनरेट</strong> करें और लेबल मोटर पर चिपकाएं।<br>
-      2. डिस्पैच के समय उसी बारकोड को <strong>स्कैन</strong> करें — डिस्पैच तारीख अपने आप सेव हो जाएगी।<br>
-      3. बाद में कभी भी वही बारकोड स्कैन करें, डिस्पैच तारीख तुरंत दिख जाएगी।
+      3. Scan the <strong>same barcode again anytime</strong> and its dispatch date shows up instantly.
     </p>
   </div>
 </section>
@@ -2926,7 +2927,7 @@ window.addEventListener('afterprint', ()=>{
 document.getElementById('manualBarcodeBtn').addEventListener('click', ()=>{
   const input = document.getElementById('manualBarcodeInput');
   const val = input.value.trim();
-  if(!val){ toast('Barcode number daalein', 'error'); return; }
+  if(!val){ toast('Please enter a barcode number', 'error'); return; }
   handleScannedBarcode(val, 'manual');
   input.value = '';
 });
@@ -3686,7 +3687,7 @@ async function sendMotorToTelegram(entry){
   const token = (settings.tgToken || '').trim();
   const chatId = (settings.tgChatId || '').trim();
   if(!token || !chatId){
-    toast('Pehle Settings mein Telegram Bot Token aur Chat ID save karein', 'error');
+    toast('Please save your Telegram Bot Token and Chat ID in Settings first', 'error');
     switchView('settings');
     return;
   }
@@ -3697,9 +3698,9 @@ async function sendMotorToTelegram(entry){
   const svg = liveEntry.format === 'qr'
     ? qrCodeSVG(buildQRContent(liveEntry.barcode, liveEntry.motorName, liveEntry.dispatchDate, liveEntry.qty), { cellSize: 6 })
     : renderCodeSVG(liveEntry.barcode, liveEntry.format, { moduleWidth: 3, height: 90 });
-  if(!svg){ toast('Code image nahi ban paya', 'error'); return; }
+  if(!svg){ toast('Failed to generate the code image', 'error'); return; }
 
-  toast('📤 Telegram par bhej rahe hain…', 'info');
+  toast('📤 Sending to Telegram…', 'info');
   try{
     const blob = await svgToPngBlob(svg, 4);
     const caption = [
@@ -3718,25 +3719,25 @@ async function sendMotorToTelegram(entry){
 
     const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, { method:'POST', body: fd });
     const data = await res.json();
-    if(data.ok){ toast('✅ Telegram par bhej diya', 'success'); }
+    if(data.ok){ toast('✅ Sent to Telegram', 'success'); }
     else{ toast('Telegram error: ' + (data.description || 'unknown error'), 'error'); }
   }catch(e){
-    toast('Telegram bhejne mein error: ' + e.message, 'error');
+    toast('Error sending to Telegram: ' + e.message, 'error');
   }
 }
 
 async function sendTelegramTestMessage(){
   const token = (settings.tgToken || '').trim();
   const chatId = (settings.tgChatId || '').trim();
-  if(!token || !chatId){ toast('Pehle Bot Token aur Chat ID daal kar Save karein', 'error'); return; }
-  toast('Test message bhej rahe hain…', 'info');
+  if(!token || !chatId){ toast('Please enter and save your Bot Token and Chat ID first', 'error'); return; }
+  toast('Sending test message…', 'info');
   try{
     const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method:'POST', headers:{ 'Content-Type':'application/json' },
       body: JSON.stringify({ chat_id: chatId, text: '✅ Motor Dispatch Tracker se test message — connection theek hai!' })
     });
     const data = await res.json();
-    if(data.ok){ toast('✅ Test message bhej diya — Telegram check karein', 'success'); }
+    if(data.ok){ toast('✅ Test message sent — check Telegram', 'success'); }
     else{ toast('Telegram error: ' + (data.description || 'unknown error'), 'error'); }
   }catch(e){
     toast('Error: ' + e.message, 'error');
@@ -3874,6 +3875,8 @@ function initBarcodeGenerator(){
   document.getElementById('genSaveBtn').addEventListener('click', ()=>{
     const barcodeValue = document.getElementById('genBarcodeValue').value.trim();
     const motorName = document.getElementById('genMotorName').value.trim();
+    const qty = document.getElementById('genQty').value.trim();
+    const salesPerson = document.getElementById('genSalesPerson').value.trim();
     const notes = document.getElementById('genNotes').value.trim();
 
     if(!barcodeValue){ toast('Enter or generate a code value first', 'error'); return; }
@@ -3881,15 +3884,17 @@ function initBarcodeGenerator(){
     if(genFormat === 'qr' && !qrCodeSVG(barcodeValue)){ toast('QR value could not be encoded — try something shorter', 'error'); return; }
     if(entries.find(e=>e.barcode === barcodeValue)){ toast('This code already exists — generate a new one', 'error'); return; }
 
-    const entry = registerMotor(barcodeValue, genFormat, { motorName, notes, qty });
-    toast('✅ Motor registered (Pending Dispatch) — Telegram par dispatch ke time jaayega', 'success');
+    const entry = registerMotor(barcodeValue, genFormat, { motorName, notes, qty, salesPerson });
+    toast('✅ Motor registered (Pending Dispatch) — will be sent to Telegram at dispatch time', 'success');
     renderTable(); renderStats();
 
     document.getElementById('genMotorName').value = '';
+    document.getElementById('genSalesPerson').value = '';
     document.getElementById('genNotes').value = '';
     document.getElementById('genBarcodeValue').value = suggestBarcodeValue();
     updateGenPreview();
   });
+
 
   document.getElementById('genPrintBtn').addEventListener('click', ()=>{
     const barcodeValue = document.getElementById('genBarcodeValue').value.trim();
@@ -4026,9 +4031,10 @@ document.getElementById('genTgBtn').addEventListener('click', ()=>{
   const barcodeValue = document.getElementById('genBarcodeValue').value.trim();
   const motorName = document.getElementById('genMotorName').value.trim();
   const qty = document.getElementById('genQty').value.trim();
+  const salesPerson = document.getElementById('genSalesPerson').value.trim();
   const notes = document.getElementById('genNotes').value.trim();
   if(!barcodeValue){ toast('Enter or generate a code value first', 'error'); return; }
-  sendMotorToTelegram({ barcode: barcodeValue, motorName, qty, notes, dispatchDate: '', format: genFormat });
+  sendMotorToTelegram({ barcode: barcodeValue, motorName, qty, salesPerson, notes, dispatchDate: '', format: genFormat });
 });
 document.getElementById('themeToggleBtn').addEventListener('click', ()=>{
   settings.dark = !settings.dark; saveSettings(); applySettingsToUI();
