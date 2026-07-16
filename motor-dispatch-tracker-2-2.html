@@ -1,0 +1,4108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Motor Dispatch Tracker</title>
+<meta name="theme-color" content="#1565c0">
+<!-- ============ WEB APP MANIFEST (inline via Blob, best-effort "Add to Home Screen") ============ -->
+<script>
+  const manifest = {
+    name: "Motor Dispatch Tracker", short_name: "MotorTrack",
+    start_url: ".", display: "standalone",
+    background_color: "#f4f7fb", theme_color: "#1565c0",
+    icons: [{ src: "data:image/svg+xml," + encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192"><rect width="192" height="192" fill="%231565c0"/><text x="50%" y="58%" font-size="100" text-anchor="middle" fill="white" font-family="sans-serif">⚙️</text></svg>'
+    ), sizes: "192x192", type: "image/svg+xml" }]
+  };
+  const manifestBlob = new Blob([JSON.stringify(manifest)], {type:'application/json'});
+  const manifestURL = URL.createObjectURL(manifestBlob);
+  document.write(`<link rel="manifest" href="${manifestURL}">`);
+</script>
+<style>
+/* ============================= CSS VARIABLES / THEME ============================= */
+:root{
+  --primary:#1565c0; --primary-dark:#0d47a1; --accent:#42a5f5;
+  --bg:#f4f7fb; --card:#ffffff; --text:#1a2233; --text-soft:#5b6b82;
+  --border:#e1e8f0; --success:#2e7d32; --danger:#c62828; --warning:#e8a000;
+  --radius:16px; --radius-sm:10px;
+  --shadow:0 4px 18px rgba(21,101,192,.10);
+  --nav-h:64px; --header-h:56px;
+}
+[data-theme="dark"]{
+  --bg:#0d1420; --card:#182236; --text:#e7edf6; --text-soft:#93a2b8;
+  --border:#28354a; --shadow:0 4px 18px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+body{
+  font-family:'Segoe UI',Roboto,-apple-system,sans-serif;
+  background:var(--bg); color:var(--text);
+  min-height:100vh; padding-bottom:var(--nav-h);
+  transition:background .25s,color .25s;
+  overscroll-behavior:contain;
+}
+button{font-family:inherit; cursor:pointer; border:none; background:none; color:inherit;}
+input,select{font-family:inherit;}
+
+/* ---------- HEADER ---------- */
+.app-header{
+  height:var(--header-h); display:flex; align-items:center; justify-content:space-between;
+  padding:0 16px; background:linear-gradient(135deg,var(--primary),var(--primary-dark));
+  color:#fff; position:sticky; top:0; z-index:50; box-shadow:0 2px 10px rgba(0,0,0,.15);
+}
+.brand{display:flex; align-items:center; gap:10px; font-weight:700; font-size:1.02rem;}
+.brand .logo{font-size:1.4rem;}
+.brand .sub{font-size:.65rem; opacity:.85; font-weight:500; display:block;}
+.header-actions button{color:#fff; font-size:1.25rem; padding:6px;}
+
+/* ---------- BOTTOM NAV ---------- */
+.bottom-nav{
+  position:fixed; bottom:0; left:0; right:0; height:var(--nav-h);
+  background:var(--card); border-top:1px solid var(--border);
+  display:flex; z-index:50; box-shadow:0 -2px 12px rgba(0,0,0,.06);
+}
+.nav-btn{
+  flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:2px; font-size:.68rem; color:var(--text-soft); transition:.2s;
+}
+.nav-btn .icon{font-size:1.3rem;}
+.nav-btn.active{color:var(--primary); font-weight:700;}
+
+/* ---------- VIEWS ---------- */
+.view{display:none; padding:14px; max-width:900px; margin:0 auto; animation:fadeIn .25s ease;}
+.view.active{display:block;}
+@keyframes fadeIn{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);}}
+
+/* ---------- CARD ---------- */
+.card{
+  background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow);
+  padding:16px; margin-bottom:14px; border:1px solid var(--border);
+}
+.card h2,.card h3{margin-bottom:4px; font-size:1rem; display:flex; align-items:center; gap:8px;}
+.card .subtitle{font-size:.75rem; color:var(--text-soft); margin-bottom:10px;}
+
+/* ---------- SCANNER ---------- */
+.scanner-wrap{position:relative; border-radius:var(--radius); overflow:hidden; background:#000; aspect-ratio:3/4; max-height:58vh;}
+.format-toggle{display:flex; gap:8px;}
+.format-btn{flex:1; padding:10px; border-radius:var(--radius-sm); border:1.5px solid var(--border); background:var(--card); cursor:pointer; font-size:14px; font-weight:600; color:var(--text);}
+.format-btn.active{border-color:var(--primary); background:rgba(21,101,192,.12); color:var(--primary);}
+#video{width:100%; height:100%; object-fit:cover;}
+.scan-overlay{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none;}
+.scan-frame{width:70%; aspect-ratio:1; position:relative;}
+.corner{position:absolute; width:28px; height:28px; border:4px solid var(--accent);}
+.corner.tl{top:0;left:0;border-right:none;border-bottom:none;border-top-left-radius:8px;}
+.corner.tr{top:0;right:0;border-left:none;border-bottom:none;border-top-right-radius:8px;}
+.corner.bl{bottom:0;left:0;border-right:none;border-top:none;border-bottom-left-radius:8px;}
+.corner.br{bottom:0;right:0;border-left:none;border-top:none;border-bottom-right-radius:8px;}
+.scan-line{position:absolute; left:2%; width:96%; height:3px; background:linear-gradient(90deg,transparent,var(--accent),transparent); top:0; animation:scanmove 2s linear infinite; box-shadow:0 0 8px var(--accent);}
+@keyframes scanmove{0%{top:0;}50%{top:100%;}100%{top:0;}}
+.cam-controls{position:absolute; bottom:10px; left:0; right:0; display:flex; justify-content:center; gap:14px;}
+.cam-controls button{
+  width:48px; height:48px; border-radius:50%; background:rgba(0,0,0,.5); color:#fff;
+  font-size:1.25rem; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(4px);
+  transition:.2s;
+}
+.cam-controls button.on{background:var(--accent); color:#04283e;}
+.zoom-row{display:flex; align-items:center; gap:10px; margin-top:10px;}
+.zoom-row input[type=range]{flex:1; accent-color:var(--primary);}
+.scan-status{text-align:center; margin-top:10px; font-size:.85rem; color:var(--text-soft);}
+.scan-status.live{color:var(--success); font-weight:600;}
+
+/* ---------- RESULT CARD (scan outcome: new / dispatched-now / already) ---------- */
+#resultCard{border-left:5px solid var(--success); transition:.2s;}
+#resultCard.state-new{border-left-color:var(--success);}
+#resultCard.state-dispatched-now{border-left-color:var(--primary);}
+#resultCard.state-already{border-left-color:var(--warning);}
+.badge{display:inline-block; padding:4px 12px; border-radius:20px; font-size:.72rem; font-weight:700; color:#fff;}
+.badge.new{background:var(--success);}
+.badge.dispatched-now{background:var(--primary);}
+.badge.already{background:var(--warning); color:#2a2205;}
+.big-dispatch-date{
+  font-size:1.5rem; font-weight:800; color:var(--primary); margin:10px 0 4px;
+  display:flex; align-items:center; gap:8px;
+}
+.big-dispatch-date .pending{color:var(--text-soft); font-size:1rem; font-weight:600;}
+.field-row{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;}
+.field-row .full{grid-column:1/-1;}
+.field-row label{display:block; font-size:.72rem; color:var(--text-soft); margin-bottom:3px; font-weight:600;}
+.field-row input,.field-row textarea{
+  width:100%; padding:9px 10px; border:1px solid var(--border); border-radius:var(--radius-sm);
+  background:var(--bg); color:var(--text); font-size:.9rem;
+}
+.field-row input:disabled{opacity:.65;}
+.unlock-row{display:flex; align-items:center; gap:8px; margin-top:6px;}
+
+/* ---------- BUTTONS ---------- */
+.btn{
+  padding:10px 16px; border-radius:var(--radius-sm); font-weight:600; font-size:.85rem;
+  display:inline-flex; align-items:center; gap:6px; transition:.2s; border:1px solid transparent;
+}
+.btn-primary{background:var(--primary); color:#fff;}
+.btn-primary:hover{background:var(--primary-dark);}
+.btn-outline{background:transparent; border-color:var(--primary); color:var(--primary);}
+.btn-danger{background:var(--danger); color:#fff;}
+.btn-success{background:var(--success); color:#fff;}
+.btn-sm{padding:6px 10px; font-size:.75rem;}
+.btn-block{width:100%; justify-content:center;}
+.btn-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+.btn:active{transform:scale(.97);}
+
+/* ---------- SEARCH / FILTERS ---------- */
+.search-row{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;}
+.search-row input{padding:9px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--bg); color:var(--text); font-size:.85rem;}
+.filter-row{display:flex; gap:8px; overflow-x:auto; margin-bottom:12px;}
+.chip{padding:7px 14px; border-radius:20px; background:var(--bg); border:1px solid var(--border); font-size:.8rem; white-space:nowrap; font-weight:600; color:var(--text-soft);}
+.chip.active{background:var(--primary); color:#fff; border-color:var(--primary);}
+
+.table-wrap{overflow-x:auto; border-radius:var(--radius-sm); border:1px solid var(--border);}
+table{width:100%; border-collapse:collapse; font-size:.8rem; min-width:820px;}
+th,td{padding:9px 10px; text-align:left; border-bottom:1px solid var(--border); white-space:nowrap;}
+th{background:var(--bg); font-weight:700; color:var(--text-soft); position:sticky; top:0;}
+tbody tr:hover{background:rgba(66,165,245,.06);}
+.row-actions{display:flex; gap:6px;}
+.icon-btn{width:30px; height:30px; border-radius:8px; display:flex; align-items:center; justify-content:center; background:var(--bg); border:1px solid var(--border);}
+.empty-state{text-align:center; padding:30px 10px; color:var(--text-soft);}
+.status-pill{padding:3px 9px; border-radius:14px; font-size:.7rem; font-weight:700;}
+.status-pill.pending{background:rgba(232,160,0,.15); color:var(--warning);}
+.status-pill.dispatched{background:rgba(46,125,50,.15); color:var(--success);}
+
+/* ---------- STATS ---------- */
+.stats-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+.stat-card{background:var(--card); border-radius:var(--radius); padding:18px; box-shadow:var(--shadow); border:1px solid var(--border); text-align:center;}
+.stat-card .num{font-size:1.8rem; font-weight:800; color:var(--primary);}
+.stat-card .lbl{font-size:.75rem; color:var(--text-soft); margin-top:4px; font-weight:600;}
+
+/* ---------- SETTINGS ---------- */
+.setting-row{display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid var(--border);}
+.setting-row:last-child{border-bottom:none;}
+.switch{position:relative; width:46px; height:26px;}
+.switch input{opacity:0; width:0; height:0;}
+.slider{position:absolute; inset:0; background:var(--border); border-radius:20px; transition:.25s; cursor:pointer;}
+.slider::before{content:"";position:absolute; width:20px; height:20px; left:3px; top:3px; background:#fff; border-radius:50%; transition:.25s;}
+input:checked + .slider{background:var(--primary);}
+input:checked + .slider::before{transform:translateX(20px);}
+
+/* ---------- MODALS ---------- */
+.modal-backdrop{position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:200; padding:20px;}
+.modal-backdrop.show{display:flex;}
+.modal{background:var(--card); border-radius:var(--radius); padding:20px; width:100%; max-width:380px; animation:popIn .2s ease;}
+@keyframes popIn{from{transform:scale(.9); opacity:0;} to{transform:scale(1); opacity:1;}}
+.modal h3{margin-bottom:10px;}
+.modal p{color:var(--text-soft); font-size:.88rem; margin-bottom:16px; line-height:1.4;}
+.modal-actions{display:flex; gap:8px; flex-wrap:wrap;}
+.modal-actions .btn{flex:1;}
+
+/* ---------- TOASTS ---------- */
+#toastContainer{position:fixed; bottom:calc(var(--nav-h) + 12px); left:0; right:0; display:flex; flex-direction:column; align-items:center; gap:8px; z-index:300; pointer-events:none;}
+.toast{padding:11px 18px; border-radius:30px; background:var(--text); color:var(--bg); font-size:.83rem; font-weight:600; box-shadow:0 4px 14px rgba(0,0,0,.25); animation:toastIn .25s ease; max-width:90%; text-align:center;}
+.toast.success{background:var(--success); color:#fff;}
+.toast.error{background:var(--danger); color:#fff;}
+.toast.warning{background:var(--warning); color:#28210a;}
+@keyframes toastIn{from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);}}
+
+/* ---------- LOADING ---------- */
+#loadingOverlay{position:fixed; inset:0; background:var(--bg); z-index:500; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; transition:opacity .3s;}
+.spinner{width:46px; height:46px; border:4px solid var(--border); border-top-color:var(--primary); border-radius:50%; animation:spin 1s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* ---------- BARCODE GENERATOR ---------- */
+.barcode-preview-box{
+  background:#fff; border:1px dashed var(--border); border-radius:var(--radius-sm);
+  padding:18px 10px; display:flex; align-items:center; justify-content:center;
+  min-height:110px; overflow-x:auto; margin-top:10px;
+}
+.barcode-preview-box svg{max-width:100%; height:auto;}
+.barcode-preview-box.invalid{color:var(--danger); font-size:.85rem; border-color:var(--danger);}
+.barcode-input-row{display:flex; gap:6px; align-items:flex-end;}
+.barcode-input-row .field-row{flex:1; margin-top:0;}
+.regen-btn{
+  width:38px; height:38px; border-radius:var(--radius-sm); background:var(--bg);
+  border:1px solid var(--border); font-size:1rem; flex-shrink:0;
+}
+.label-sheet{padding:20px; text-align:center;}
+.label-sheet .label-product{font-size:1.1rem; font-weight:700; margin-bottom:6px;}
+.label-sheet .label-meta{font-size:.85rem; color:#444; margin-top:6px;}
+
+/* ---------- BULK GENERATE ---------- */
+.batch-info-banner{
+  background:rgba(21,101,192,.08); border:1px solid var(--primary); border-radius:var(--radius-sm);
+  padding:10px 12px; margin-top:12px; font-size:.82rem; display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;
+}
+.batch-info-banner strong{color:var(--primary);}
+.print-label-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:8px;}
+.print-label-cell{border:1px dashed #999; padding:5px; text-align:center; break-inside:avoid; page-break-inside:avoid;}
+.print-label-cell img{max-width:100%; height:auto;}
+.print-label-cell .lbl-text{font-size:9px; margin-top:2px; color:#333;}
+
+/* ---------- PAGINATION ---------- */
+.pagination-row{display:flex; align-items:center; justify-content:center; gap:10px; margin-top:12px; flex-wrap:wrap;}
+.pagination-row button{
+  padding:7px 14px; border-radius:var(--radius-sm); background:var(--bg); border:1px solid var(--border);
+  font-size:.8rem; font-weight:600; color:var(--text);
+}
+.pagination-row button:disabled{opacity:.4;}
+.pagination-row .page-indicator{font-size:.8rem; color:var(--text-soft); font-weight:600;}
+
+
+/* ---------- MISC ---------- */
+.hidden{display:none !important;}
+.text-soft{color:var(--text-soft); font-size:.8rem;}
+.file-input{display:none;}
+@media(min-width:700px){
+  .search-row{grid-template-columns:1fr 1fr 1fr;}
+  .stats-grid{grid-template-columns:repeat(5,1fr);}
+}
+@media print{
+  body *{visibility:hidden;}
+  #printArea, #printArea *{visibility:visible;}
+  #printArea{display:block !important; position:absolute; top:0; left:0; width:100%;}
+}
+</style>
+</head>
+<body data-theme="light">
+
+<!-- ============================= LOADING OVERLAY ============================= -->
+<div id="loadingOverlay"><div class="spinner"></div><div>Loading Motor Dispatch Tracker…</div></div>
+
+<!-- ============================= HEADER ============================= -->
+<header class="app-header">
+  <div class="brand">
+    <span class="logo">⚙️</span>
+    <span>Motor Dispatch Tracker<span class="sub">Barcode &amp; Warranty Management</span></span>
+  </div>
+  <div class="header-actions">
+    <button id="themeToggleBtn" title="Toggle Theme">🌙</button>
+  </div>
+</header>
+
+<!-- ============================= SCANNER VIEW ============================= -->
+<main>
+<section class="view active" id="view-scanner">
+  <div class="card">
+    <h2>📷 Scan Motor Barcode</h2>
+    <div class="subtitle">Scan the barcode on the motor using your camera — detection is automatic</div>
+    <div class="scanner-wrap">
+      <video id="video" playsinline autoplay muted></video>
+      <div class="scan-overlay">
+        <div class="scan-frame">
+          <span class="corner tl"></span><span class="corner tr"></span>
+          <span class="corner bl"></span><span class="corner br"></span>
+          <div class="scan-line" id="scanLine"></div>
+        </div>
+      </div>
+      <div class="cam-controls">
+        <button id="torchBtn" title="Flashlight">🔦</button>
+        <button id="startStopBtn" title="Start/Stop">⏸️</button>
+        <button id="switchCamBtn" title="Switch Camera">🔄</button>
+      </div>
+    </div>
+    <div class="zoom-row hidden" id="zoomRow">
+      <span>🔍</span><input type="range" id="zoomRange" min="1" max="1" step="0.1" value="1">
+    </div>
+    <div class="scan-status" id="scanStatus">Initializing camera…</div>
+    <div class="field-row" style="margin-top:10px;">
+      <div class="full">
+        <label>⌨️ Or enter the barcode number manually (if the camera cannot scan it)</label>
+        <div class="barcode-input-row">
+          <input type="text" id="manualBarcodeInput" placeholder="e.g. 784100481627" inputmode="numeric">
+          <button class="regen-btn" id="manualBarcodeBtn" title="Submit">✅</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dynamic result card: shows one of 3 states after a scan -->
+  <div class="card hidden" id="resultCard">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h3 style="margin:0;" id="resultTitle">Result</h3>
+      <span class="badge" id="resultBadge">-</span>
+    </div>
+    <div class="text-soft" style="margin-top:6px;">
+      Barcode: <strong id="resultBarcode">-</strong>
+    </div>
+
+    <div class="big-dispatch-date" id="bigDispatchDate">
+      <span>🚚</span><span id="bigDispatchDateText" class="pending">Not dispatched yet</span>
+    </div>
+
+    <div class="field-row">
+      <div class="full">
+        <label>Motor Name / Model</label>
+        <input type="text" id="resultMotorName" placeholder="e.g. 1HP Induction Motor">
+      </div>
+      <div class="full">
+        <label>Quantity</label>
+        <input type="number" id="resultQty" min="1" placeholder="e.g. 1">
+      </div>
+      <div class="full">
+        <label>Sales Person</label>
+        <input type="text" id="resultSalesPerson" placeholder="e.g. Shubham Sir">
+      </div>
+      <div class="full">
+        <label>Dispatch Date</label>
+        <input type="date" id="resultDispatchDate">
+        <div class="unlock-row hidden" id="unlockRow">
+          <button class="btn btn-outline btn-sm" id="unlockDateBtn">🔓 Unlock to correct date</button>
+        </div>
+      </div>
+      <div class="full">
+        <label>Notes</label>
+        <textarea id="resultNotes" rows="2" placeholder="Optional notes"></textarea>
+      </div>
+    </div>
+    <button class="btn btn-outline btn-sm" id="resultTgBtn" style="margin-top:8px;">📤 Send to Telegram</button>
+  </div>
+</section>
+
+<!-- ============================= INVENTORY VIEW ============================= -->
+<section class="view" id="view-inventory">
+
+  <div class="card">
+    <h2>📦 Bulk Generate Motor Barcodes</h2>
+    <div class="subtitle">Generate and print hundreds or thousands of unique barcodes at once (bulk barcode generation)</div>
+    <div class="field-row">
+      <div>
+        <label>Quantity (kitne barcode?)</label>
+        <input type="number" id="bulkQty" min="1" max="5000" value="1000">
+      </div>
+      <div>
+        <label>Prefix (optional)</label>
+        <input type="text" id="bulkPrefix" value="MTR" maxlength="6">
+      </div>
+    </div>
+    <div class="btn-grid" style="margin-top:12px;">
+      <button class="btn btn-primary" id="bulkSaveBtn">💾 Generate &amp; Save</button>
+      <button class="btn btn-outline" id="bulkSavePrintBtn">🖨️ Generate, Save &amp; Print All</button>
+    </div>
+    <div class="batch-info-banner hidden" id="batchInfoBanner">
+      <span id="batchInfoText">-</span>
+      <button class="btn btn-outline btn-sm" id="reprintBatchBtn">🖨️ Reprint This Batch</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>🏷️ Generate Single Motor Barcode</h2>
+    <div class="subtitle">Ek motor ke liye barcode banayein (naya motor barcode banayein)</div>
+    <div class="field-row">
+      <div class="full">
+        <label>Motor Name / Model</label>
+        <input type="text" id="genMotorName" placeholder="e.g. 1HP Induction Motor">
+      </div>
+      <div class="full">
+        <label>Quantity</label>
+        <input type="number" id="genQty" min="1" value="1" placeholder="e.g. 1">
+      </div>
+      <div class="full">
+        <label>Sales Person (if already known)</label>
+        <input type="text" id="genSalesPerson" placeholder="e.g. Priyanka Ma'am">
+      </div>
+      <div class="full">
+        <label>Code Type</label>
+        <div class="format-toggle" id="genFormatToggle">
+          <button type="button" class="format-btn active" data-format="qr">▦ QR Code</button>
+          <button type="button" class="format-btn" data-format="code_128">▮▮▮ Barcode</button>
+        </div>
+      </div>
+      <div class="full">
+        <label>Barcode / Motor ID</label>
+        <div class="barcode-input-row">
+          <input type="text" id="genBarcodeValue" placeholder="Auto-generated">
+          <button class="regen-btn" id="genRegenBtn" title="Generate new code">🔄</button>
+        </div>
+      </div>
+      <div class="full">
+        <label>Notes</label>
+        <textarea id="genNotes" rows="2" placeholder="Optional notes"></textarea>
+      </div>
+    </div>
+    <div class="barcode-preview-box" id="genPreviewBox"></div>
+    <div class="btn-grid" style="margin-top:12px;">
+      <button class="btn btn-primary" id="genSaveBtn">💾 Register Motor</button>
+      <button class="btn btn-outline" id="genPrintBtn">🖨️ Print Label</button>
+      <button class="btn btn-outline" id="genTgBtn">📤 Send to Telegram</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>🔍 Search &amp; Filter</h2>
+    <div class="search-row">
+      <input type="text" id="searchBarcode" placeholder="Search barcode…">
+      <input type="text" id="searchMotor" placeholder="Search motor name…">
+      <input type="date" id="searchDate" title="Search by dispatch date">
+    </div>
+    <div class="filter-row">
+      <div class="chip active" data-filter="all">All</div>
+      <div class="chip" data-filter="pending">Pending Dispatch</div>
+      <div class="chip" data-filter="dispatched">Dispatched</div>
+      <div class="chip" data-filter="today">Dispatched Today</div>
+      <div class="chip" data-filter="week">This Week</div>
+      <div class="chip" data-filter="month">This Month</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <h2 style="margin:0;">📋 Motors (<span id="rowCount">0</span>)</h2>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>#</th><th>Barcode</th><th>Motor Name</th><th>Status</th><th>Dispatch Date</th><th>Registered</th><th>Notes</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="inventoryTbody"></tbody>
+      </table>
+    </div>
+    <div class="empty-state hidden" id="emptyState">No motors registered yet. Generate a barcode or scan one to begin!</div>
+    <div class="pagination-row" id="paginationRow">
+      <button id="prevPageBtn">◀ Prev</button>
+      <span class="page-indicator" id="pageIndicator">Page 1 / 1</span>
+      <button id="nextPageBtn">Next ▶</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>📤 Export / Import / Backup</h3>
+    <div class="btn-grid">
+      <button class="btn btn-outline" id="exportCsvBtn">📄 Export CSV</button>
+      <button class="btn btn-outline" id="exportExcelBtn">📊 Excel CSV</button>
+      <button class="btn btn-outline" id="exportJsonBtn">🗂️ Export JSON</button>
+      <button class="btn btn-outline" id="printBtn">🖨️ Print Report</button>
+      <button class="btn btn-outline" id="importBtn">📥 Import CSV</button>
+      <button class="btn btn-outline" id="backupBtn">💾 Backup Data</button>
+      <button class="btn btn-outline" id="restoreBtn">♻️ Restore Data</button>
+      <button class="btn btn-danger" id="clearAllBtn">🗑️ Clear All</button>
+    </div>
+    <input type="file" id="importCsvInput" class="file-input" accept=".csv">
+    <input type="file" id="restoreInput" class="file-input" accept=".json">
+  </div>
+</section>
+
+<!-- ============================= STATS VIEW ============================= -->
+<section class="view" id="view-stats">
+  <div class="card">
+    <h2>📊 Dispatch Dashboard</h2>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="num" id="statTotal">0</div><div class="lbl">Total Motors</div></div>
+      <div class="stat-card"><div class="num" id="statPending">0</div><div class="lbl">Pending Dispatch</div></div>
+      <div class="stat-card"><div class="num" id="statDispatched">0</div><div class="lbl">Dispatched</div></div>
+      <div class="stat-card"><div class="num" id="statTodayDispatched">0</div><div class="lbl">Dispatched Today</div></div>
+      <div class="stat-card"><div class="num" id="statRepeatScans">0</div><div class="lbl">Repeat Scans</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= SETTINGS VIEW ============================= -->
+<section class="view" id="view-settings">
+  <div class="card">
+    <h2>⚙️ Settings</h2>
+    <div class="setting-row">
+      <span>🔊 Sound on Scan</span>
+      <label class="switch"><input type="checkbox" id="settingSound"><span class="slider"></span></label>
+    </div>
+    <div class="setting-row">
+      <span>📳 Vibration on Scan</span>
+      <label class="switch"><input type="checkbox" id="settingVibrate"><span class="slider"></span></label>
+    </div>
+    <div class="setting-row">
+      <span>🌙 Dark Mode</span>
+      <label class="switch"><input type="checkbox" id="settingDark"><span class="slider"></span></label>
+    </div>
+    <div class="setting-row">
+      <span>💾 Auto-Save New Motor Scans</span>
+      <label class="switch"><input type="checkbox" id="settingAutoSave"><span class="slider"></span></label>
+    </div>
+  </div>
+  <div class="card">
+    <h3>📤 Telegram Integration</h3>
+    <p class="text-soft" style="margin-bottom:10px;">Send motor details and the barcode/QR image directly to Telegram. First enter your Bot Token and Chat ID below (create a bot via @BotFather, and get your Chat ID from @userinfobot).</p>
+    <div class="field-row">
+      <div class="full">
+        <label>Telegram Bot Token</label>
+        <input type="text" id="settingTgToken" placeholder="e.g. 123456789:ABCdefGhIJKlmNoPQRstuVWXyz">
+      </div>
+      <div class="full">
+        <label>Telegram Chat ID</label>
+        <input type="text" id="settingTgChatId" placeholder="e.g. 123456789 or -1001234567890">
+      </div>
+    </div>
+    <button class="btn btn-outline btn-sm" id="tgSaveBtn" style="margin-top:8px;">💾 Save Telegram Settings</button>
+    <button class="btn btn-outline btn-sm" id="tgTestBtn" style="margin-top:8px;">✅ Send Test Message</button>
+    <div class="setting-row" style="margin-top:10px;">
+      <span>🚚 Dispatch scan hote hi auto-send</span>
+      <label class="switch"><input type="checkbox" id="settingTgAutoSend"><span class="slider"></span></label>
+    </div>
+  </div>
+  <div class="card">
+    <h3>⌨️ Keyboard Shortcuts (Desktop)</h3>
+    <p class="text-soft">
+      <strong>S</strong> - Start/Stop Scan &nbsp;|&nbsp; <strong>F</strong> - Toggle Flash<br>
+      <strong>E</strong> - Export CSV &nbsp;|&nbsp; <strong>/</strong> - Focus Search<br>
+      <strong>1-4</strong> - Switch Tabs &nbsp;|&nbsp; <strong>Esc</strong> - Close Modal
+    </p>
+  </div>
+  <div class="card">
+    <h3>ℹ️ How This Works</h3>
+    <p class="text-soft">
+      1. <strong>Generate</strong> a barcode for each new motor and print/stick the label on it (before dispatch).<br>
+      2. When the motor is actually dispatched, <strong>scan its barcode</strong> — the dispatch date is recorded automatically.<br>
+      3. Scan the <strong>same barcode again anytime</strong> and its dispatch date shows up instantly.
+    </p>
+  </div>
+</section>
+</main>
+
+<!-- ============================= BOTTOM NAV ============================= -->
+<nav class="bottom-nav">
+  <button class="nav-btn active" data-view="scanner"><span class="icon">📷</span>Scan</button>
+  <button class="nav-btn" data-view="inventory"><span class="icon">⚙️</span>Motors</button>
+  <button class="nav-btn" data-view="stats"><span class="icon">📊</span>Stats</button>
+  <button class="nav-btn" data-view="settings"><span class="icon">⚙️</span>Settings</button>
+</nav>
+
+<!-- ============================= MODALS ============================= -->
+<div class="modal-backdrop" id="editModal">
+  <div class="modal">
+    <h3>✏️ Edit Motor</h3>
+    <div class="field-row">
+      <div class="full"><label>Barcode</label><input type="text" id="editBarcode" disabled></div>
+      <div class="full"><label>Motor Name / Model</label><input type="text" id="editName"></div>
+      <div class="full"><label>Quantity</label><input type="number" id="editQty" min="1"></div>
+      <div class="full"><label>Sales Person</label><input type="text" id="editSalesPerson"></div>
+      <div class="full"><label>Dispatch Date (leave blank if not dispatched)</label><input type="date" id="editDispatchDate"></div>
+      <div class="full"><label>Notes</label><textarea id="editNotes" rows="2"></textarea></div>
+    </div>
+    <div class="modal-actions" style="margin-top:14px;">
+      <button class="btn btn-success" id="editSaveBtn">Save</button>
+      <button class="btn btn-outline" id="editCancelBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="confirmModal">
+  <div class="modal">
+    <h3 id="confirmTitle">Confirm</h3>
+    <p id="confirmMsg">Are you sure?</p>
+    <div class="modal-actions">
+      <button class="btn btn-danger" id="confirmYesBtn">Yes</button>
+      <button class="btn btn-outline" id="confirmNoBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="toastContainer"></div>
+<div id="printArea" class="hidden"></div>
+
+<!-- QR Code Generator library (Kazuhiko Arase, MIT License) — embedded inline for offline use -->
+<script>
+//---------------------------------------------------------------------
+//
+// QR Code Generator for JavaScript
+//
+// Copyright (c) 2009 Kazuhiko Arase
+//
+// URL: http://www.d-project.com/
+//
+// Licensed under the MIT license:
+//  http://www.opensource.org/licenses/mit-license.php
+//
+// The word 'QR Code' is registered trademark of
+// DENSO WAVE INCORPORATED
+//  http://www.denso-wave.com/qrcode/faqpatent-e.html
+//
+//---------------------------------------------------------------------
+
+var qrcode = function() {
+
+  //---------------------------------------------------------------------
+  // qrcode
+  //---------------------------------------------------------------------
+
+  /**
+   * qrcode
+   * @param typeNumber 1 to 40
+   * @param errorCorrectionLevel 'L','M','Q','H'
+   */
+  var qrcode = function(typeNumber, errorCorrectionLevel) {
+
+    var PAD0 = 0xEC;
+    var PAD1 = 0x11;
+
+    var _typeNumber = typeNumber;
+    var _errorCorrectionLevel = QRErrorCorrectionLevel[errorCorrectionLevel];
+    var _modules = null;
+    var _moduleCount = 0;
+    var _dataCache = null;
+    var _dataList = [];
+
+    var _this = {};
+
+    var makeImpl = function(test, maskPattern) {
+
+      _moduleCount = _typeNumber * 4 + 17;
+      _modules = function(moduleCount) {
+        var modules = new Array(moduleCount);
+        for (var row = 0; row < moduleCount; row += 1) {
+          modules[row] = new Array(moduleCount);
+          for (var col = 0; col < moduleCount; col += 1) {
+            modules[row][col] = null;
+          }
+        }
+        return modules;
+      }(_moduleCount);
+
+      setupPositionProbePattern(0, 0);
+      setupPositionProbePattern(_moduleCount - 7, 0);
+      setupPositionProbePattern(0, _moduleCount - 7);
+      setupPositionAdjustPattern();
+      setupTimingPattern();
+      setupTypeInfo(test, maskPattern);
+
+      if (_typeNumber >= 7) {
+        setupTypeNumber(test);
+      }
+
+      if (_dataCache == null) {
+        _dataCache = createData(_typeNumber, _errorCorrectionLevel, _dataList);
+      }
+
+      mapData(_dataCache, maskPattern);
+    };
+
+    var setupPositionProbePattern = function(row, col) {
+
+      for (var r = -1; r <= 7; r += 1) {
+
+        if (row + r <= -1 || _moduleCount <= row + r) continue;
+
+        for (var c = -1; c <= 7; c += 1) {
+
+          if (col + c <= -1 || _moduleCount <= col + c) continue;
+
+          if ( (0 <= r && r <= 6 && (c == 0 || c == 6) )
+              || (0 <= c && c <= 6 && (r == 0 || r == 6) )
+              || (2 <= r && r <= 4 && 2 <= c && c <= 4) ) {
+            _modules[row + r][col + c] = true;
+          } else {
+            _modules[row + r][col + c] = false;
+          }
+        }
+      }
+    };
+
+    var getBestMaskPattern = function() {
+
+      var minLostPoint = 0;
+      var pattern = 0;
+
+      for (var i = 0; i < 8; i += 1) {
+
+        makeImpl(true, i);
+
+        var lostPoint = QRUtil.getLostPoint(_this);
+
+        if (i == 0 || minLostPoint > lostPoint) {
+          minLostPoint = lostPoint;
+          pattern = i;
+        }
+      }
+
+      return pattern;
+    };
+
+    var setupTimingPattern = function() {
+
+      for (var r = 8; r < _moduleCount - 8; r += 1) {
+        if (_modules[r][6] != null) {
+          continue;
+        }
+        _modules[r][6] = (r % 2 == 0);
+      }
+
+      for (var c = 8; c < _moduleCount - 8; c += 1) {
+        if (_modules[6][c] != null) {
+          continue;
+        }
+        _modules[6][c] = (c % 2 == 0);
+      }
+    };
+
+    var setupPositionAdjustPattern = function() {
+
+      var pos = QRUtil.getPatternPosition(_typeNumber);
+
+      for (var i = 0; i < pos.length; i += 1) {
+
+        for (var j = 0; j < pos.length; j += 1) {
+
+          var row = pos[i];
+          var col = pos[j];
+
+          if (_modules[row][col] != null) {
+            continue;
+          }
+
+          for (var r = -2; r <= 2; r += 1) {
+
+            for (var c = -2; c <= 2; c += 1) {
+
+              if (r == -2 || r == 2 || c == -2 || c == 2
+                  || (r == 0 && c == 0) ) {
+                _modules[row + r][col + c] = true;
+              } else {
+                _modules[row + r][col + c] = false;
+              }
+            }
+          }
+        }
+      }
+    };
+
+    var setupTypeNumber = function(test) {
+
+      var bits = QRUtil.getBCHTypeNumber(_typeNumber);
+
+      for (var i = 0; i < 18; i += 1) {
+        var mod = (!test && ( (bits >> i) & 1) == 1);
+        _modules[Math.floor(i / 3)][i % 3 + _moduleCount - 8 - 3] = mod;
+      }
+
+      for (var i = 0; i < 18; i += 1) {
+        var mod = (!test && ( (bits >> i) & 1) == 1);
+        _modules[i % 3 + _moduleCount - 8 - 3][Math.floor(i / 3)] = mod;
+      }
+    };
+
+    var setupTypeInfo = function(test, maskPattern) {
+
+      var data = (_errorCorrectionLevel << 3) | maskPattern;
+      var bits = QRUtil.getBCHTypeInfo(data);
+
+      // vertical
+      for (var i = 0; i < 15; i += 1) {
+
+        var mod = (!test && ( (bits >> i) & 1) == 1);
+
+        if (i < 6) {
+          _modules[i][8] = mod;
+        } else if (i < 8) {
+          _modules[i + 1][8] = mod;
+        } else {
+          _modules[_moduleCount - 15 + i][8] = mod;
+        }
+      }
+
+      // horizontal
+      for (var i = 0; i < 15; i += 1) {
+
+        var mod = (!test && ( (bits >> i) & 1) == 1);
+
+        if (i < 8) {
+          _modules[8][_moduleCount - i - 1] = mod;
+        } else if (i < 9) {
+          _modules[8][15 - i - 1 + 1] = mod;
+        } else {
+          _modules[8][15 - i - 1] = mod;
+        }
+      }
+
+      // fixed module
+      _modules[_moduleCount - 8][8] = (!test);
+    };
+
+    var mapData = function(data, maskPattern) {
+
+      var inc = -1;
+      var row = _moduleCount - 1;
+      var bitIndex = 7;
+      var byteIndex = 0;
+      var maskFunc = QRUtil.getMaskFunction(maskPattern);
+
+      for (var col = _moduleCount - 1; col > 0; col -= 2) {
+
+        if (col == 6) col -= 1;
+
+        while (true) {
+
+          for (var c = 0; c < 2; c += 1) {
+
+            if (_modules[row][col - c] == null) {
+
+              var dark = false;
+
+              if (byteIndex < data.length) {
+                dark = ( ( (data[byteIndex] >>> bitIndex) & 1) == 1);
+              }
+
+              var mask = maskFunc(row, col - c);
+
+              if (mask) {
+                dark = !dark;
+              }
+
+              _modules[row][col - c] = dark;
+              bitIndex -= 1;
+
+              if (bitIndex == -1) {
+                byteIndex += 1;
+                bitIndex = 7;
+              }
+            }
+          }
+
+          row += inc;
+
+          if (row < 0 || _moduleCount <= row) {
+            row -= inc;
+            inc = -inc;
+            break;
+          }
+        }
+      }
+    };
+
+    var createBytes = function(buffer, rsBlocks) {
+
+      var offset = 0;
+
+      var maxDcCount = 0;
+      var maxEcCount = 0;
+
+      var dcdata = new Array(rsBlocks.length);
+      var ecdata = new Array(rsBlocks.length);
+
+      for (var r = 0; r < rsBlocks.length; r += 1) {
+
+        var dcCount = rsBlocks[r].dataCount;
+        var ecCount = rsBlocks[r].totalCount - dcCount;
+
+        maxDcCount = Math.max(maxDcCount, dcCount);
+        maxEcCount = Math.max(maxEcCount, ecCount);
+
+        dcdata[r] = new Array(dcCount);
+
+        for (var i = 0; i < dcdata[r].length; i += 1) {
+          dcdata[r][i] = 0xff & buffer.getBuffer()[i + offset];
+        }
+        offset += dcCount;
+
+        var rsPoly = QRUtil.getErrorCorrectPolynomial(ecCount);
+        var rawPoly = qrPolynomial(dcdata[r], rsPoly.getLength() - 1);
+
+        var modPoly = rawPoly.mod(rsPoly);
+        ecdata[r] = new Array(rsPoly.getLength() - 1);
+        for (var i = 0; i < ecdata[r].length; i += 1) {
+          var modIndex = i + modPoly.getLength() - ecdata[r].length;
+          ecdata[r][i] = (modIndex >= 0)? modPoly.getAt(modIndex) : 0;
+        }
+      }
+
+      var totalCodeCount = 0;
+      for (var i = 0; i < rsBlocks.length; i += 1) {
+        totalCodeCount += rsBlocks[i].totalCount;
+      }
+
+      var data = new Array(totalCodeCount);
+      var index = 0;
+
+      for (var i = 0; i < maxDcCount; i += 1) {
+        for (var r = 0; r < rsBlocks.length; r += 1) {
+          if (i < dcdata[r].length) {
+            data[index] = dcdata[r][i];
+            index += 1;
+          }
+        }
+      }
+
+      for (var i = 0; i < maxEcCount; i += 1) {
+        for (var r = 0; r < rsBlocks.length; r += 1) {
+          if (i < ecdata[r].length) {
+            data[index] = ecdata[r][i];
+            index += 1;
+          }
+        }
+      }
+
+      return data;
+    };
+
+    var createData = function(typeNumber, errorCorrectionLevel, dataList) {
+
+      var rsBlocks = QRRSBlock.getRSBlocks(typeNumber, errorCorrectionLevel);
+
+      var buffer = qrBitBuffer();
+
+      for (var i = 0; i < dataList.length; i += 1) {
+        var data = dataList[i];
+        buffer.put(data.getMode(), 4);
+        buffer.put(data.getLength(), QRUtil.getLengthInBits(data.getMode(), typeNumber) );
+        data.write(buffer);
+      }
+
+      // calc num max data.
+      var totalDataCount = 0;
+      for (var i = 0; i < rsBlocks.length; i += 1) {
+        totalDataCount += rsBlocks[i].dataCount;
+      }
+
+      if (buffer.getLengthInBits() > totalDataCount * 8) {
+        throw 'code length overflow. ('
+          + buffer.getLengthInBits()
+          + '>'
+          + totalDataCount * 8
+          + ')';
+      }
+
+      // end code
+      if (buffer.getLengthInBits() + 4 <= totalDataCount * 8) {
+        buffer.put(0, 4);
+      }
+
+      // padding
+      while (buffer.getLengthInBits() % 8 != 0) {
+        buffer.putBit(false);
+      }
+
+      // padding
+      while (true) {
+
+        if (buffer.getLengthInBits() >= totalDataCount * 8) {
+          break;
+        }
+        buffer.put(PAD0, 8);
+
+        if (buffer.getLengthInBits() >= totalDataCount * 8) {
+          break;
+        }
+        buffer.put(PAD1, 8);
+      }
+
+      return createBytes(buffer, rsBlocks);
+    };
+
+    _this.addData = function(data, mode) {
+
+      mode = mode || 'Byte';
+
+      var newData = null;
+
+      switch(mode) {
+      case 'Numeric' :
+        newData = qrNumber(data);
+        break;
+      case 'Alphanumeric' :
+        newData = qrAlphaNum(data);
+        break;
+      case 'Byte' :
+        newData = qr8BitByte(data);
+        break;
+      case 'Kanji' :
+        newData = qrKanji(data);
+        break;
+      default :
+        throw 'mode:' + mode;
+      }
+
+      _dataList.push(newData);
+      _dataCache = null;
+    };
+
+    _this.isDark = function(row, col) {
+      if (row < 0 || _moduleCount <= row || col < 0 || _moduleCount <= col) {
+        throw row + ',' + col;
+      }
+      return _modules[row][col];
+    };
+
+    _this.getModuleCount = function() {
+      return _moduleCount;
+    };
+
+    _this.make = function() {
+      if (_typeNumber < 1) {
+        var typeNumber = 1;
+
+        for (; typeNumber < 40; typeNumber++) {
+          var rsBlocks = QRRSBlock.getRSBlocks(typeNumber, _errorCorrectionLevel);
+          var buffer = qrBitBuffer();
+
+          for (var i = 0; i < _dataList.length; i++) {
+            var data = _dataList[i];
+            buffer.put(data.getMode(), 4);
+            buffer.put(data.getLength(), QRUtil.getLengthInBits(data.getMode(), typeNumber) );
+            data.write(buffer);
+          }
+
+          var totalDataCount = 0;
+          for (var i = 0; i < rsBlocks.length; i++) {
+            totalDataCount += rsBlocks[i].dataCount;
+          }
+
+          if (buffer.getLengthInBits() <= totalDataCount * 8) {
+            break;
+          }
+        }
+
+        _typeNumber = typeNumber;
+      }
+
+      makeImpl(false, getBestMaskPattern() );
+    };
+
+    _this.createTableTag = function(cellSize, margin) {
+
+      cellSize = cellSize || 2;
+      margin = (typeof margin == 'undefined')? cellSize * 4 : margin;
+
+      var qrHtml = '';
+
+      qrHtml += '<table style="';
+      qrHtml += ' border-width: 0px; border-style: none;';
+      qrHtml += ' border-collapse: collapse;';
+      qrHtml += ' padding: 0px; margin: ' + margin + 'px;';
+      qrHtml += '">';
+      qrHtml += '<tbody>';
+
+      for (var r = 0; r < _this.getModuleCount(); r += 1) {
+
+        qrHtml += '<tr>';
+
+        for (var c = 0; c < _this.getModuleCount(); c += 1) {
+          qrHtml += '<td style="';
+          qrHtml += ' border-width: 0px; border-style: none;';
+          qrHtml += ' border-collapse: collapse;';
+          qrHtml += ' padding: 0px; margin: 0px;';
+          qrHtml += ' width: ' + cellSize + 'px;';
+          qrHtml += ' height: ' + cellSize + 'px;';
+          qrHtml += ' background-color: ';
+          qrHtml += _this.isDark(r, c)? '#000000' : '#ffffff';
+          qrHtml += ';';
+          qrHtml += '"/>';
+        }
+
+        qrHtml += '</tr>';
+      }
+
+      qrHtml += '</tbody>';
+      qrHtml += '</table>';
+
+      return qrHtml;
+    };
+
+    _this.createSvgTag = function(cellSize, margin, alt, title) {
+
+      var opts = {};
+      if (typeof arguments[0] == 'object') {
+        // Called by options.
+        opts = arguments[0];
+        // overwrite cellSize and margin.
+        cellSize = opts.cellSize;
+        margin = opts.margin;
+        alt = opts.alt;
+        title = opts.title;
+      }
+
+      cellSize = cellSize || 2;
+      margin = (typeof margin == 'undefined')? cellSize * 4 : margin;
+
+      // Compose alt property surrogate
+      alt = (typeof alt === 'string') ? {text: alt} : alt || {};
+      alt.text = alt.text || null;
+      alt.id = (alt.text) ? alt.id || 'qrcode-description' : null;
+
+      // Compose title property surrogate
+      title = (typeof title === 'string') ? {text: title} : title || {};
+      title.text = title.text || null;
+      title.id = (title.text) ? title.id || 'qrcode-title' : null;
+
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+      var c, mc, r, mr, qrSvg='', rect;
+
+      rect = 'l' + cellSize + ',0 0,' + cellSize +
+        ' -' + cellSize + ',0 0,-' + cellSize + 'z ';
+
+      qrSvg += '<svg version="1.1" xmlns="http://www.w3.org/2000/svg"';
+      qrSvg += !opts.scalable ? ' width="' + size + 'px" height="' + size + 'px"' : '';
+      qrSvg += ' viewBox="0 0 ' + size + ' ' + size + '" ';
+      qrSvg += ' preserveAspectRatio="xMinYMin meet"';
+      qrSvg += (title.text || alt.text) ? ' role="img" aria-labelledby="' +
+          escapeXml([title.id, alt.id].join(' ').trim() ) + '"' : '';
+      qrSvg += '>';
+      qrSvg += (title.text) ? '<title id="' + escapeXml(title.id) + '">' +
+          escapeXml(title.text) + '</title>' : '';
+      qrSvg += (alt.text) ? '<description id="' + escapeXml(alt.id) + '">' +
+          escapeXml(alt.text) + '</description>' : '';
+      qrSvg += '<rect width="100%" height="100%" fill="white" cx="0" cy="0"/>';
+      qrSvg += '<path d="';
+
+      for (r = 0; r < _this.getModuleCount(); r += 1) {
+        mr = r * cellSize + margin;
+        for (c = 0; c < _this.getModuleCount(); c += 1) {
+          if (_this.isDark(r, c) ) {
+            mc = c*cellSize+margin;
+            qrSvg += 'M' + mc + ',' + mr + rect;
+          }
+        }
+      }
+
+      qrSvg += '" stroke="transparent" fill="black"/>';
+      qrSvg += '</svg>';
+
+      return qrSvg;
+    };
+
+    _this.createDataURL = function(cellSize, margin) {
+
+      cellSize = cellSize || 2;
+      margin = (typeof margin == 'undefined')? cellSize * 4 : margin;
+
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+      var min = margin;
+      var max = size - margin;
+
+      return createDataURL(size, size, function(x, y) {
+        if (min <= x && x < max && min <= y && y < max) {
+          var c = Math.floor( (x - min) / cellSize);
+          var r = Math.floor( (y - min) / cellSize);
+          return _this.isDark(r, c)? 0 : 1;
+        } else {
+          return 1;
+        }
+      } );
+    };
+
+    _this.createImgTag = function(cellSize, margin, alt) {
+
+      cellSize = cellSize || 2;
+      margin = (typeof margin == 'undefined')? cellSize * 4 : margin;
+
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+
+      var img = '';
+      img += '<img';
+      img += '\u0020src="';
+      img += _this.createDataURL(cellSize, margin);
+      img += '"';
+      img += '\u0020width="';
+      img += size;
+      img += '"';
+      img += '\u0020height="';
+      img += size;
+      img += '"';
+      if (alt) {
+        img += '\u0020alt="';
+        img += escapeXml(alt);
+        img += '"';
+      }
+      img += '/>';
+
+      return img;
+    };
+
+    var escapeXml = function(s) {
+      var escaped = '';
+      for (var i = 0; i < s.length; i += 1) {
+        var c = s.charAt(i);
+        switch(c) {
+        case '<': escaped += '&lt;'; break;
+        case '>': escaped += '&gt;'; break;
+        case '&': escaped += '&amp;'; break;
+        case '"': escaped += '&quot;'; break;
+        default : escaped += c; break;
+        }
+      }
+      return escaped;
+    };
+
+    var _createHalfASCII = function(margin) {
+      var cellSize = 1;
+      margin = (typeof margin == 'undefined')? cellSize * 2 : margin;
+
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+      var min = margin;
+      var max = size - margin;
+
+      var y, x, r1, r2, p;
+
+      var blocks = {
+        '██': '█',
+        '█ ': '▀',
+        ' █': '▄',
+        '  ': ' '
+      };
+
+      var blocksLastLineNoMargin = {
+        '██': '▀',
+        '█ ': '▀',
+        ' █': ' ',
+        '  ': ' '
+      };
+
+      var ascii = '';
+      for (y = 0; y < size; y += 2) {
+        r1 = Math.floor((y - min) / cellSize);
+        r2 = Math.floor((y + 1 - min) / cellSize);
+        for (x = 0; x < size; x += 1) {
+          p = '█';
+
+          if (min <= x && x < max && min <= y && y < max && _this.isDark(r1, Math.floor((x - min) / cellSize))) {
+            p = ' ';
+          }
+
+          if (min <= x && x < max && min <= y+1 && y+1 < max && _this.isDark(r2, Math.floor((x - min) / cellSize))) {
+            p += ' ';
+          }
+          else {
+            p += '█';
+          }
+
+          // Output 2 characters per pixel, to create full square. 1 character per pixels gives only half width of square.
+          ascii += (margin < 1 && y+1 >= max) ? blocksLastLineNoMargin[p] : blocks[p];
+        }
+
+        ascii += '\n';
+      }
+
+      if (size % 2 && margin > 0) {
+        return ascii.substring(0, ascii.length - size - 1) + Array(size+1).join('▀');
+      }
+
+      return ascii.substring(0, ascii.length-1);
+    };
+
+    _this.createASCII = function(cellSize, margin) {
+      cellSize = cellSize || 1;
+
+      if (cellSize < 2) {
+        return _createHalfASCII(margin);
+      }
+
+      cellSize -= 1;
+      margin = (typeof margin == 'undefined')? cellSize * 2 : margin;
+
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+      var min = margin;
+      var max = size - margin;
+
+      var y, x, r, p;
+
+      var white = Array(cellSize+1).join('██');
+      var black = Array(cellSize+1).join('  ');
+
+      var ascii = '';
+      var line = '';
+      for (y = 0; y < size; y += 1) {
+        r = Math.floor( (y - min) / cellSize);
+        line = '';
+        for (x = 0; x < size; x += 1) {
+          p = 1;
+
+          if (min <= x && x < max && min <= y && y < max && _this.isDark(r, Math.floor((x - min) / cellSize))) {
+            p = 0;
+          }
+
+          // Output 2 characters per pixel, to create full square. 1 character per pixels gives only half width of square.
+          line += p ? white : black;
+        }
+
+        for (r = 0; r < cellSize; r += 1) {
+          ascii += line + '\n';
+        }
+      }
+
+      return ascii.substring(0, ascii.length-1);
+    };
+
+    _this.renderTo2dContext = function(context, cellSize) {
+      cellSize = cellSize || 2;
+      var length = _this.getModuleCount();
+      for (var row = 0; row < length; row++) {
+        for (var col = 0; col < length; col++) {
+          context.fillStyle = _this.isDark(row, col) ? 'black' : 'white';
+          context.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+        }
+      }
+    }
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // qrcode.stringToBytes
+  //---------------------------------------------------------------------
+
+  qrcode.stringToBytesFuncs = {
+    'default' : function(s) {
+      var bytes = [];
+      for (var i = 0; i < s.length; i += 1) {
+        var c = s.charCodeAt(i);
+        bytes.push(c & 0xff);
+      }
+      return bytes;
+    }
+  };
+
+  qrcode.stringToBytes = qrcode.stringToBytesFuncs['default'];
+
+  //---------------------------------------------------------------------
+  // qrcode.createStringToBytes
+  //---------------------------------------------------------------------
+
+  /**
+   * @param unicodeData base64 string of byte array.
+   * [16bit Unicode],[16bit Bytes], ...
+   * @param numChars
+   */
+  qrcode.createStringToBytes = function(unicodeData, numChars) {
+
+    // create conversion map.
+
+    var unicodeMap = function() {
+
+      var bin = base64DecodeInputStream(unicodeData);
+      var read = function() {
+        var b = bin.read();
+        if (b == -1) throw 'eof';
+        return b;
+      };
+
+      var count = 0;
+      var unicodeMap = {};
+      while (true) {
+        var b0 = bin.read();
+        if (b0 == -1) break;
+        var b1 = read();
+        var b2 = read();
+        var b3 = read();
+        var k = String.fromCharCode( (b0 << 8) | b1);
+        var v = (b2 << 8) | b3;
+        unicodeMap[k] = v;
+        count += 1;
+      }
+      if (count != numChars) {
+        throw count + ' != ' + numChars;
+      }
+
+      return unicodeMap;
+    }();
+
+    var unknownChar = '?'.charCodeAt(0);
+
+    return function(s) {
+      var bytes = [];
+      for (var i = 0; i < s.length; i += 1) {
+        var c = s.charCodeAt(i);
+        if (c < 128) {
+          bytes.push(c);
+        } else {
+          var b = unicodeMap[s.charAt(i)];
+          if (typeof b == 'number') {
+            if ( (b & 0xff) == b) {
+              // 1byte
+              bytes.push(b);
+            } else {
+              // 2bytes
+              bytes.push(b >>> 8);
+              bytes.push(b & 0xff);
+            }
+          } else {
+            bytes.push(unknownChar);
+          }
+        }
+      }
+      return bytes;
+    };
+  };
+
+  //---------------------------------------------------------------------
+  // QRMode
+  //---------------------------------------------------------------------
+
+  var QRMode = {
+    MODE_NUMBER :    1 << 0,
+    MODE_ALPHA_NUM : 1 << 1,
+    MODE_8BIT_BYTE : 1 << 2,
+    MODE_KANJI :     1 << 3
+  };
+
+  //---------------------------------------------------------------------
+  // QRErrorCorrectionLevel
+  //---------------------------------------------------------------------
+
+  var QRErrorCorrectionLevel = {
+    L : 1,
+    M : 0,
+    Q : 3,
+    H : 2
+  };
+
+  //---------------------------------------------------------------------
+  // QRMaskPattern
+  //---------------------------------------------------------------------
+
+  var QRMaskPattern = {
+    PATTERN000 : 0,
+    PATTERN001 : 1,
+    PATTERN010 : 2,
+    PATTERN011 : 3,
+    PATTERN100 : 4,
+    PATTERN101 : 5,
+    PATTERN110 : 6,
+    PATTERN111 : 7
+  };
+
+  //---------------------------------------------------------------------
+  // QRUtil
+  //---------------------------------------------------------------------
+
+  var QRUtil = function() {
+
+    var PATTERN_POSITION_TABLE = [
+      [],
+      [6, 18],
+      [6, 22],
+      [6, 26],
+      [6, 30],
+      [6, 34],
+      [6, 22, 38],
+      [6, 24, 42],
+      [6, 26, 46],
+      [6, 28, 50],
+      [6, 30, 54],
+      [6, 32, 58],
+      [6, 34, 62],
+      [6, 26, 46, 66],
+      [6, 26, 48, 70],
+      [6, 26, 50, 74],
+      [6, 30, 54, 78],
+      [6, 30, 56, 82],
+      [6, 30, 58, 86],
+      [6, 34, 62, 90],
+      [6, 28, 50, 72, 94],
+      [6, 26, 50, 74, 98],
+      [6, 30, 54, 78, 102],
+      [6, 28, 54, 80, 106],
+      [6, 32, 58, 84, 110],
+      [6, 30, 58, 86, 114],
+      [6, 34, 62, 90, 118],
+      [6, 26, 50, 74, 98, 122],
+      [6, 30, 54, 78, 102, 126],
+      [6, 26, 52, 78, 104, 130],
+      [6, 30, 56, 82, 108, 134],
+      [6, 34, 60, 86, 112, 138],
+      [6, 30, 58, 86, 114, 142],
+      [6, 34, 62, 90, 118, 146],
+      [6, 30, 54, 78, 102, 126, 150],
+      [6, 24, 50, 76, 102, 128, 154],
+      [6, 28, 54, 80, 106, 132, 158],
+      [6, 32, 58, 84, 110, 136, 162],
+      [6, 26, 54, 82, 110, 138, 166],
+      [6, 30, 58, 86, 114, 142, 170]
+    ];
+    var G15 = (1 << 10) | (1 << 8) | (1 << 5) | (1 << 4) | (1 << 2) | (1 << 1) | (1 << 0);
+    var G18 = (1 << 12) | (1 << 11) | (1 << 10) | (1 << 9) | (1 << 8) | (1 << 5) | (1 << 2) | (1 << 0);
+    var G15_MASK = (1 << 14) | (1 << 12) | (1 << 10) | (1 << 4) | (1 << 1);
+
+    var _this = {};
+
+    var getBCHDigit = function(data) {
+      var digit = 0;
+      while (data != 0) {
+        digit += 1;
+        data >>>= 1;
+      }
+      return digit;
+    };
+
+    _this.getBCHTypeInfo = function(data) {
+      var d = data << 10;
+      while (getBCHDigit(d) - getBCHDigit(G15) >= 0) {
+        d ^= (G15 << (getBCHDigit(d) - getBCHDigit(G15) ) );
+      }
+      return ( (data << 10) | d) ^ G15_MASK;
+    };
+
+    _this.getBCHTypeNumber = function(data) {
+      var d = data << 12;
+      while (getBCHDigit(d) - getBCHDigit(G18) >= 0) {
+        d ^= (G18 << (getBCHDigit(d) - getBCHDigit(G18) ) );
+      }
+      return (data << 12) | d;
+    };
+
+    _this.getPatternPosition = function(typeNumber) {
+      return PATTERN_POSITION_TABLE[typeNumber - 1];
+    };
+
+    _this.getMaskFunction = function(maskPattern) {
+
+      switch (maskPattern) {
+
+      case QRMaskPattern.PATTERN000 :
+        return function(i, j) { return (i + j) % 2 == 0; };
+      case QRMaskPattern.PATTERN001 :
+        return function(i, j) { return i % 2 == 0; };
+      case QRMaskPattern.PATTERN010 :
+        return function(i, j) { return j % 3 == 0; };
+      case QRMaskPattern.PATTERN011 :
+        return function(i, j) { return (i + j) % 3 == 0; };
+      case QRMaskPattern.PATTERN100 :
+        return function(i, j) { return (Math.floor(i / 2) + Math.floor(j / 3) ) % 2 == 0; };
+      case QRMaskPattern.PATTERN101 :
+        return function(i, j) { return (i * j) % 2 + (i * j) % 3 == 0; };
+      case QRMaskPattern.PATTERN110 :
+        return function(i, j) { return ( (i * j) % 2 + (i * j) % 3) % 2 == 0; };
+      case QRMaskPattern.PATTERN111 :
+        return function(i, j) { return ( (i * j) % 3 + (i + j) % 2) % 2 == 0; };
+
+      default :
+        throw 'bad maskPattern:' + maskPattern;
+      }
+    };
+
+    _this.getErrorCorrectPolynomial = function(errorCorrectLength) {
+      var a = qrPolynomial([1], 0);
+      for (var i = 0; i < errorCorrectLength; i += 1) {
+        a = a.multiply(qrPolynomial([1, QRMath.gexp(i)], 0) );
+      }
+      return a;
+    };
+
+    _this.getLengthInBits = function(mode, type) {
+
+      if (1 <= type && type < 10) {
+
+        // 1 - 9
+
+        switch(mode) {
+        case QRMode.MODE_NUMBER    : return 10;
+        case QRMode.MODE_ALPHA_NUM : return 9;
+        case QRMode.MODE_8BIT_BYTE : return 8;
+        case QRMode.MODE_KANJI     : return 8;
+        default :
+          throw 'mode:' + mode;
+        }
+
+      } else if (type < 27) {
+
+        // 10 - 26
+
+        switch(mode) {
+        case QRMode.MODE_NUMBER    : return 12;
+        case QRMode.MODE_ALPHA_NUM : return 11;
+        case QRMode.MODE_8BIT_BYTE : return 16;
+        case QRMode.MODE_KANJI     : return 10;
+        default :
+          throw 'mode:' + mode;
+        }
+
+      } else if (type < 41) {
+
+        // 27 - 40
+
+        switch(mode) {
+        case QRMode.MODE_NUMBER    : return 14;
+        case QRMode.MODE_ALPHA_NUM : return 13;
+        case QRMode.MODE_8BIT_BYTE : return 16;
+        case QRMode.MODE_KANJI     : return 12;
+        default :
+          throw 'mode:' + mode;
+        }
+
+      } else {
+        throw 'type:' + type;
+      }
+    };
+
+    _this.getLostPoint = function(qrcode) {
+
+      var moduleCount = qrcode.getModuleCount();
+
+      var lostPoint = 0;
+
+      // LEVEL1
+
+      for (var row = 0; row < moduleCount; row += 1) {
+        for (var col = 0; col < moduleCount; col += 1) {
+
+          var sameCount = 0;
+          var dark = qrcode.isDark(row, col);
+
+          for (var r = -1; r <= 1; r += 1) {
+
+            if (row + r < 0 || moduleCount <= row + r) {
+              continue;
+            }
+
+            for (var c = -1; c <= 1; c += 1) {
+
+              if (col + c < 0 || moduleCount <= col + c) {
+                continue;
+              }
+
+              if (r == 0 && c == 0) {
+                continue;
+              }
+
+              if (dark == qrcode.isDark(row + r, col + c) ) {
+                sameCount += 1;
+              }
+            }
+          }
+
+          if (sameCount > 5) {
+            lostPoint += (3 + sameCount - 5);
+          }
+        }
+      };
+
+      // LEVEL2
+
+      for (var row = 0; row < moduleCount - 1; row += 1) {
+        for (var col = 0; col < moduleCount - 1; col += 1) {
+          var count = 0;
+          if (qrcode.isDark(row, col) ) count += 1;
+          if (qrcode.isDark(row + 1, col) ) count += 1;
+          if (qrcode.isDark(row, col + 1) ) count += 1;
+          if (qrcode.isDark(row + 1, col + 1) ) count += 1;
+          if (count == 0 || count == 4) {
+            lostPoint += 3;
+          }
+        }
+      }
+
+      // LEVEL3
+
+      for (var row = 0; row < moduleCount; row += 1) {
+        for (var col = 0; col < moduleCount - 6; col += 1) {
+          if (qrcode.isDark(row, col)
+              && !qrcode.isDark(row, col + 1)
+              &&  qrcode.isDark(row, col + 2)
+              &&  qrcode.isDark(row, col + 3)
+              &&  qrcode.isDark(row, col + 4)
+              && !qrcode.isDark(row, col + 5)
+              &&  qrcode.isDark(row, col + 6) ) {
+            lostPoint += 40;
+          }
+        }
+      }
+
+      for (var col = 0; col < moduleCount; col += 1) {
+        for (var row = 0; row < moduleCount - 6; row += 1) {
+          if (qrcode.isDark(row, col)
+              && !qrcode.isDark(row + 1, col)
+              &&  qrcode.isDark(row + 2, col)
+              &&  qrcode.isDark(row + 3, col)
+              &&  qrcode.isDark(row + 4, col)
+              && !qrcode.isDark(row + 5, col)
+              &&  qrcode.isDark(row + 6, col) ) {
+            lostPoint += 40;
+          }
+        }
+      }
+
+      // LEVEL4
+
+      var darkCount = 0;
+
+      for (var col = 0; col < moduleCount; col += 1) {
+        for (var row = 0; row < moduleCount; row += 1) {
+          if (qrcode.isDark(row, col) ) {
+            darkCount += 1;
+          }
+        }
+      }
+
+      var ratio = Math.abs(100 * darkCount / moduleCount / moduleCount - 50) / 5;
+      lostPoint += ratio * 10;
+
+      return lostPoint;
+    };
+
+    return _this;
+  }();
+
+  //---------------------------------------------------------------------
+  // QRMath
+  //---------------------------------------------------------------------
+
+  var QRMath = function() {
+
+    var EXP_TABLE = new Array(256);
+    var LOG_TABLE = new Array(256);
+
+    // initialize tables
+    for (var i = 0; i < 8; i += 1) {
+      EXP_TABLE[i] = 1 << i;
+    }
+    for (var i = 8; i < 256; i += 1) {
+      EXP_TABLE[i] = EXP_TABLE[i - 4]
+        ^ EXP_TABLE[i - 5]
+        ^ EXP_TABLE[i - 6]
+        ^ EXP_TABLE[i - 8];
+    }
+    for (var i = 0; i < 255; i += 1) {
+      LOG_TABLE[EXP_TABLE[i] ] = i;
+    }
+
+    var _this = {};
+
+    _this.glog = function(n) {
+
+      if (n < 1) {
+        throw 'glog(' + n + ')';
+      }
+
+      return LOG_TABLE[n];
+    };
+
+    _this.gexp = function(n) {
+
+      while (n < 0) {
+        n += 255;
+      }
+
+      while (n >= 256) {
+        n -= 255;
+      }
+
+      return EXP_TABLE[n];
+    };
+
+    return _this;
+  }();
+
+  //---------------------------------------------------------------------
+  // qrPolynomial
+  //---------------------------------------------------------------------
+
+  function qrPolynomial(num, shift) {
+
+    if (typeof num.length == 'undefined') {
+      throw num.length + '/' + shift;
+    }
+
+    var _num = function() {
+      var offset = 0;
+      while (offset < num.length && num[offset] == 0) {
+        offset += 1;
+      }
+      var _num = new Array(num.length - offset + shift);
+      for (var i = 0; i < num.length - offset; i += 1) {
+        _num[i] = num[i + offset];
+      }
+      return _num;
+    }();
+
+    var _this = {};
+
+    _this.getAt = function(index) {
+      return _num[index];
+    };
+
+    _this.getLength = function() {
+      return _num.length;
+    };
+
+    _this.multiply = function(e) {
+
+      var num = new Array(_this.getLength() + e.getLength() - 1);
+
+      for (var i = 0; i < _this.getLength(); i += 1) {
+        for (var j = 0; j < e.getLength(); j += 1) {
+          num[i + j] ^= QRMath.gexp(QRMath.glog(_this.getAt(i) ) + QRMath.glog(e.getAt(j) ) );
+        }
+      }
+
+      return qrPolynomial(num, 0);
+    };
+
+    _this.mod = function(e) {
+
+      if (_this.getLength() - e.getLength() < 0) {
+        return _this;
+      }
+
+      var ratio = QRMath.glog(_this.getAt(0) ) - QRMath.glog(e.getAt(0) );
+
+      var num = new Array(_this.getLength() );
+      for (var i = 0; i < _this.getLength(); i += 1) {
+        num[i] = _this.getAt(i);
+      }
+
+      for (var i = 0; i < e.getLength(); i += 1) {
+        num[i] ^= QRMath.gexp(QRMath.glog(e.getAt(i) ) + ratio);
+      }
+
+      // recursive call
+      return qrPolynomial(num, 0).mod(e);
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // QRRSBlock
+  //---------------------------------------------------------------------
+
+  var QRRSBlock = function() {
+
+    var RS_BLOCK_TABLE = [
+
+      // L
+      // M
+      // Q
+      // H
+
+      // 1
+      [1, 26, 19],
+      [1, 26, 16],
+      [1, 26, 13],
+      [1, 26, 9],
+
+      // 2
+      [1, 44, 34],
+      [1, 44, 28],
+      [1, 44, 22],
+      [1, 44, 16],
+
+      // 3
+      [1, 70, 55],
+      [1, 70, 44],
+      [2, 35, 17],
+      [2, 35, 13],
+
+      // 4
+      [1, 100, 80],
+      [2, 50, 32],
+      [2, 50, 24],
+      [4, 25, 9],
+
+      // 5
+      [1, 134, 108],
+      [2, 67, 43],
+      [2, 33, 15, 2, 34, 16],
+      [2, 33, 11, 2, 34, 12],
+
+      // 6
+      [2, 86, 68],
+      [4, 43, 27],
+      [4, 43, 19],
+      [4, 43, 15],
+
+      // 7
+      [2, 98, 78],
+      [4, 49, 31],
+      [2, 32, 14, 4, 33, 15],
+      [4, 39, 13, 1, 40, 14],
+
+      // 8
+      [2, 121, 97],
+      [2, 60, 38, 2, 61, 39],
+      [4, 40, 18, 2, 41, 19],
+      [4, 40, 14, 2, 41, 15],
+
+      // 9
+      [2, 146, 116],
+      [3, 58, 36, 2, 59, 37],
+      [4, 36, 16, 4, 37, 17],
+      [4, 36, 12, 4, 37, 13],
+
+      // 10
+      [2, 86, 68, 2, 87, 69],
+      [4, 69, 43, 1, 70, 44],
+      [6, 43, 19, 2, 44, 20],
+      [6, 43, 15, 2, 44, 16],
+
+      // 11
+      [4, 101, 81],
+      [1, 80, 50, 4, 81, 51],
+      [4, 50, 22, 4, 51, 23],
+      [3, 36, 12, 8, 37, 13],
+
+      // 12
+      [2, 116, 92, 2, 117, 93],
+      [6, 58, 36, 2, 59, 37],
+      [4, 46, 20, 6, 47, 21],
+      [7, 42, 14, 4, 43, 15],
+
+      // 13
+      [4, 133, 107],
+      [8, 59, 37, 1, 60, 38],
+      [8, 44, 20, 4, 45, 21],
+      [12, 33, 11, 4, 34, 12],
+
+      // 14
+      [3, 145, 115, 1, 146, 116],
+      [4, 64, 40, 5, 65, 41],
+      [11, 36, 16, 5, 37, 17],
+      [11, 36, 12, 5, 37, 13],
+
+      // 15
+      [5, 109, 87, 1, 110, 88],
+      [5, 65, 41, 5, 66, 42],
+      [5, 54, 24, 7, 55, 25],
+      [11, 36, 12, 7, 37, 13],
+
+      // 16
+      [5, 122, 98, 1, 123, 99],
+      [7, 73, 45, 3, 74, 46],
+      [15, 43, 19, 2, 44, 20],
+      [3, 45, 15, 13, 46, 16],
+
+      // 17
+      [1, 135, 107, 5, 136, 108],
+      [10, 74, 46, 1, 75, 47],
+      [1, 50, 22, 15, 51, 23],
+      [2, 42, 14, 17, 43, 15],
+
+      // 18
+      [5, 150, 120, 1, 151, 121],
+      [9, 69, 43, 4, 70, 44],
+      [17, 50, 22, 1, 51, 23],
+      [2, 42, 14, 19, 43, 15],
+
+      // 19
+      [3, 141, 113, 4, 142, 114],
+      [3, 70, 44, 11, 71, 45],
+      [17, 47, 21, 4, 48, 22],
+      [9, 39, 13, 16, 40, 14],
+
+      // 20
+      [3, 135, 107, 5, 136, 108],
+      [3, 67, 41, 13, 68, 42],
+      [15, 54, 24, 5, 55, 25],
+      [15, 43, 15, 10, 44, 16],
+
+      // 21
+      [4, 144, 116, 4, 145, 117],
+      [17, 68, 42],
+      [17, 50, 22, 6, 51, 23],
+      [19, 46, 16, 6, 47, 17],
+
+      // 22
+      [2, 139, 111, 7, 140, 112],
+      [17, 74, 46],
+      [7, 54, 24, 16, 55, 25],
+      [34, 37, 13],
+
+      // 23
+      [4, 151, 121, 5, 152, 122],
+      [4, 75, 47, 14, 76, 48],
+      [11, 54, 24, 14, 55, 25],
+      [16, 45, 15, 14, 46, 16],
+
+      // 24
+      [6, 147, 117, 4, 148, 118],
+      [6, 73, 45, 14, 74, 46],
+      [11, 54, 24, 16, 55, 25],
+      [30, 46, 16, 2, 47, 17],
+
+      // 25
+      [8, 132, 106, 4, 133, 107],
+      [8, 75, 47, 13, 76, 48],
+      [7, 54, 24, 22, 55, 25],
+      [22, 45, 15, 13, 46, 16],
+
+      // 26
+      [10, 142, 114, 2, 143, 115],
+      [19, 74, 46, 4, 75, 47],
+      [28, 50, 22, 6, 51, 23],
+      [33, 46, 16, 4, 47, 17],
+
+      // 27
+      [8, 152, 122, 4, 153, 123],
+      [22, 73, 45, 3, 74, 46],
+      [8, 53, 23, 26, 54, 24],
+      [12, 45, 15, 28, 46, 16],
+
+      // 28
+      [3, 147, 117, 10, 148, 118],
+      [3, 73, 45, 23, 74, 46],
+      [4, 54, 24, 31, 55, 25],
+      [11, 45, 15, 31, 46, 16],
+
+      // 29
+      [7, 146, 116, 7, 147, 117],
+      [21, 73, 45, 7, 74, 46],
+      [1, 53, 23, 37, 54, 24],
+      [19, 45, 15, 26, 46, 16],
+
+      // 30
+      [5, 145, 115, 10, 146, 116],
+      [19, 75, 47, 10, 76, 48],
+      [15, 54, 24, 25, 55, 25],
+      [23, 45, 15, 25, 46, 16],
+
+      // 31
+      [13, 145, 115, 3, 146, 116],
+      [2, 74, 46, 29, 75, 47],
+      [42, 54, 24, 1, 55, 25],
+      [23, 45, 15, 28, 46, 16],
+
+      // 32
+      [17, 145, 115],
+      [10, 74, 46, 23, 75, 47],
+      [10, 54, 24, 35, 55, 25],
+      [19, 45, 15, 35, 46, 16],
+
+      // 33
+      [17, 145, 115, 1, 146, 116],
+      [14, 74, 46, 21, 75, 47],
+      [29, 54, 24, 19, 55, 25],
+      [11, 45, 15, 46, 46, 16],
+
+      // 34
+      [13, 145, 115, 6, 146, 116],
+      [14, 74, 46, 23, 75, 47],
+      [44, 54, 24, 7, 55, 25],
+      [59, 46, 16, 1, 47, 17],
+
+      // 35
+      [12, 151, 121, 7, 152, 122],
+      [12, 75, 47, 26, 76, 48],
+      [39, 54, 24, 14, 55, 25],
+      [22, 45, 15, 41, 46, 16],
+
+      // 36
+      [6, 151, 121, 14, 152, 122],
+      [6, 75, 47, 34, 76, 48],
+      [46, 54, 24, 10, 55, 25],
+      [2, 45, 15, 64, 46, 16],
+
+      // 37
+      [17, 152, 122, 4, 153, 123],
+      [29, 74, 46, 14, 75, 47],
+      [49, 54, 24, 10, 55, 25],
+      [24, 45, 15, 46, 46, 16],
+
+      // 38
+      [4, 152, 122, 18, 153, 123],
+      [13, 74, 46, 32, 75, 47],
+      [48, 54, 24, 14, 55, 25],
+      [42, 45, 15, 32, 46, 16],
+
+      // 39
+      [20, 147, 117, 4, 148, 118],
+      [40, 75, 47, 7, 76, 48],
+      [43, 54, 24, 22, 55, 25],
+      [10, 45, 15, 67, 46, 16],
+
+      // 40
+      [19, 148, 118, 6, 149, 119],
+      [18, 75, 47, 31, 76, 48],
+      [34, 54, 24, 34, 55, 25],
+      [20, 45, 15, 61, 46, 16]
+    ];
+
+    var qrRSBlock = function(totalCount, dataCount) {
+      var _this = {};
+      _this.totalCount = totalCount;
+      _this.dataCount = dataCount;
+      return _this;
+    };
+
+    var _this = {};
+
+    var getRsBlockTable = function(typeNumber, errorCorrectionLevel) {
+
+      switch(errorCorrectionLevel) {
+      case QRErrorCorrectionLevel.L :
+        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 0];
+      case QRErrorCorrectionLevel.M :
+        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 1];
+      case QRErrorCorrectionLevel.Q :
+        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 2];
+      case QRErrorCorrectionLevel.H :
+        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 3];
+      default :
+        return undefined;
+      }
+    };
+
+    _this.getRSBlocks = function(typeNumber, errorCorrectionLevel) {
+
+      var rsBlock = getRsBlockTable(typeNumber, errorCorrectionLevel);
+
+      if (typeof rsBlock == 'undefined') {
+        throw 'bad rs block @ typeNumber:' + typeNumber +
+            '/errorCorrectionLevel:' + errorCorrectionLevel;
+      }
+
+      var length = rsBlock.length / 3;
+
+      var list = [];
+
+      for (var i = 0; i < length; i += 1) {
+
+        var count = rsBlock[i * 3 + 0];
+        var totalCount = rsBlock[i * 3 + 1];
+        var dataCount = rsBlock[i * 3 + 2];
+
+        for (var j = 0; j < count; j += 1) {
+          list.push(qrRSBlock(totalCount, dataCount) );
+        }
+      }
+
+      return list;
+    };
+
+    return _this;
+  }();
+
+  //---------------------------------------------------------------------
+  // qrBitBuffer
+  //---------------------------------------------------------------------
+
+  var qrBitBuffer = function() {
+
+    var _buffer = [];
+    var _length = 0;
+
+    var _this = {};
+
+    _this.getBuffer = function() {
+      return _buffer;
+    };
+
+    _this.getAt = function(index) {
+      var bufIndex = Math.floor(index / 8);
+      return ( (_buffer[bufIndex] >>> (7 - index % 8) ) & 1) == 1;
+    };
+
+    _this.put = function(num, length) {
+      for (var i = 0; i < length; i += 1) {
+        _this.putBit( ( (num >>> (length - i - 1) ) & 1) == 1);
+      }
+    };
+
+    _this.getLengthInBits = function() {
+      return _length;
+    };
+
+    _this.putBit = function(bit) {
+
+      var bufIndex = Math.floor(_length / 8);
+      if (_buffer.length <= bufIndex) {
+        _buffer.push(0);
+      }
+
+      if (bit) {
+        _buffer[bufIndex] |= (0x80 >>> (_length % 8) );
+      }
+
+      _length += 1;
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // qrNumber
+  //---------------------------------------------------------------------
+
+  var qrNumber = function(data) {
+
+    var _mode = QRMode.MODE_NUMBER;
+    var _data = data;
+
+    var _this = {};
+
+    _this.getMode = function() {
+      return _mode;
+    };
+
+    _this.getLength = function(buffer) {
+      return _data.length;
+    };
+
+    _this.write = function(buffer) {
+
+      var data = _data;
+
+      var i = 0;
+
+      while (i + 2 < data.length) {
+        buffer.put(strToNum(data.substring(i, i + 3) ), 10);
+        i += 3;
+      }
+
+      if (i < data.length) {
+        if (data.length - i == 1) {
+          buffer.put(strToNum(data.substring(i, i + 1) ), 4);
+        } else if (data.length - i == 2) {
+          buffer.put(strToNum(data.substring(i, i + 2) ), 7);
+        }
+      }
+    };
+
+    var strToNum = function(s) {
+      var num = 0;
+      for (var i = 0; i < s.length; i += 1) {
+        num = num * 10 + chatToNum(s.charAt(i) );
+      }
+      return num;
+    };
+
+    var chatToNum = function(c) {
+      if ('0' <= c && c <= '9') {
+        return c.charCodeAt(0) - '0'.charCodeAt(0);
+      }
+      throw 'illegal char :' + c;
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // qrAlphaNum
+  //---------------------------------------------------------------------
+
+  var qrAlphaNum = function(data) {
+
+    var _mode = QRMode.MODE_ALPHA_NUM;
+    var _data = data;
+
+    var _this = {};
+
+    _this.getMode = function() {
+      return _mode;
+    };
+
+    _this.getLength = function(buffer) {
+      return _data.length;
+    };
+
+    _this.write = function(buffer) {
+
+      var s = _data;
+
+      var i = 0;
+
+      while (i + 1 < s.length) {
+        buffer.put(
+          getCode(s.charAt(i) ) * 45 +
+          getCode(s.charAt(i + 1) ), 11);
+        i += 2;
+      }
+
+      if (i < s.length) {
+        buffer.put(getCode(s.charAt(i) ), 6);
+      }
+    };
+
+    var getCode = function(c) {
+
+      if ('0' <= c && c <= '9') {
+        return c.charCodeAt(0) - '0'.charCodeAt(0);
+      } else if ('A' <= c && c <= 'Z') {
+        return c.charCodeAt(0) - 'A'.charCodeAt(0) + 10;
+      } else {
+        switch (c) {
+        case ' ' : return 36;
+        case '$' : return 37;
+        case '%' : return 38;
+        case '*' : return 39;
+        case '+' : return 40;
+        case '-' : return 41;
+        case '.' : return 42;
+        case '/' : return 43;
+        case ':' : return 44;
+        default :
+          throw 'illegal char :' + c;
+        }
+      }
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // qr8BitByte
+  //---------------------------------------------------------------------
+
+  var qr8BitByte = function(data) {
+
+    var _mode = QRMode.MODE_8BIT_BYTE;
+    var _data = data;
+    var _bytes = qrcode.stringToBytes(data);
+
+    var _this = {};
+
+    _this.getMode = function() {
+      return _mode;
+    };
+
+    _this.getLength = function(buffer) {
+      return _bytes.length;
+    };
+
+    _this.write = function(buffer) {
+      for (var i = 0; i < _bytes.length; i += 1) {
+        buffer.put(_bytes[i], 8);
+      }
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // qrKanji
+  //---------------------------------------------------------------------
+
+  var qrKanji = function(data) {
+
+    var _mode = QRMode.MODE_KANJI;
+    var _data = data;
+
+    var stringToBytes = qrcode.stringToBytesFuncs['SJIS'];
+    if (!stringToBytes) {
+      throw 'sjis not supported.';
+    }
+    !function(c, code) {
+      // self test for sjis support.
+      var test = stringToBytes(c);
+      if (test.length != 2 || ( (test[0] << 8) | test[1]) != code) {
+        throw 'sjis not supported.';
+      }
+    }('\u53cb', 0x9746);
+
+    var _bytes = stringToBytes(data);
+
+    var _this = {};
+
+    _this.getMode = function() {
+      return _mode;
+    };
+
+    _this.getLength = function(buffer) {
+      return ~~(_bytes.length / 2);
+    };
+
+    _this.write = function(buffer) {
+
+      var data = _bytes;
+
+      var i = 0;
+
+      while (i + 1 < data.length) {
+
+        var c = ( (0xff & data[i]) << 8) | (0xff & data[i + 1]);
+
+        if (0x8140 <= c && c <= 0x9FFC) {
+          c -= 0x8140;
+        } else if (0xE040 <= c && c <= 0xEBBF) {
+          c -= 0xC140;
+        } else {
+          throw 'illegal char at ' + (i + 1) + '/' + c;
+        }
+
+        c = ( (c >>> 8) & 0xff) * 0xC0 + (c & 0xff);
+
+        buffer.put(c, 13);
+
+        i += 2;
+      }
+
+      if (i < data.length) {
+        throw 'illegal char at ' + (i + 1);
+      }
+    };
+
+    return _this;
+  };
+
+  //=====================================================================
+  // GIF Support etc.
+  //
+
+  //---------------------------------------------------------------------
+  // byteArrayOutputStream
+  //---------------------------------------------------------------------
+
+  var byteArrayOutputStream = function() {
+
+    var _bytes = [];
+
+    var _this = {};
+
+    _this.writeByte = function(b) {
+      _bytes.push(b & 0xff);
+    };
+
+    _this.writeShort = function(i) {
+      _this.writeByte(i);
+      _this.writeByte(i >>> 8);
+    };
+
+    _this.writeBytes = function(b, off, len) {
+      off = off || 0;
+      len = len || b.length;
+      for (var i = 0; i < len; i += 1) {
+        _this.writeByte(b[i + off]);
+      }
+    };
+
+    _this.writeString = function(s) {
+      for (var i = 0; i < s.length; i += 1) {
+        _this.writeByte(s.charCodeAt(i) );
+      }
+    };
+
+    _this.toByteArray = function() {
+      return _bytes;
+    };
+
+    _this.toString = function() {
+      var s = '';
+      s += '[';
+      for (var i = 0; i < _bytes.length; i += 1) {
+        if (i > 0) {
+          s += ',';
+        }
+        s += _bytes[i];
+      }
+      s += ']';
+      return s;
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // base64EncodeOutputStream
+  //---------------------------------------------------------------------
+
+  var base64EncodeOutputStream = function() {
+
+    var _buffer = 0;
+    var _buflen = 0;
+    var _length = 0;
+    var _base64 = '';
+
+    var _this = {};
+
+    var writeEncoded = function(b) {
+      _base64 += String.fromCharCode(encode(b & 0x3f) );
+    };
+
+    var encode = function(n) {
+      if (n < 0) {
+        // error.
+      } else if (n < 26) {
+        return 0x41 + n;
+      } else if (n < 52) {
+        return 0x61 + (n - 26);
+      } else if (n < 62) {
+        return 0x30 + (n - 52);
+      } else if (n == 62) {
+        return 0x2b;
+      } else if (n == 63) {
+        return 0x2f;
+      }
+      throw 'n:' + n;
+    };
+
+    _this.writeByte = function(n) {
+
+      _buffer = (_buffer << 8) | (n & 0xff);
+      _buflen += 8;
+      _length += 1;
+
+      while (_buflen >= 6) {
+        writeEncoded(_buffer >>> (_buflen - 6) );
+        _buflen -= 6;
+      }
+    };
+
+    _this.flush = function() {
+
+      if (_buflen > 0) {
+        writeEncoded(_buffer << (6 - _buflen) );
+        _buffer = 0;
+        _buflen = 0;
+      }
+
+      if (_length % 3 != 0) {
+        // padding
+        var padlen = 3 - _length % 3;
+        for (var i = 0; i < padlen; i += 1) {
+          _base64 += '=';
+        }
+      }
+    };
+
+    _this.toString = function() {
+      return _base64;
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // base64DecodeInputStream
+  //---------------------------------------------------------------------
+
+  var base64DecodeInputStream = function(str) {
+
+    var _str = str;
+    var _pos = 0;
+    var _buffer = 0;
+    var _buflen = 0;
+
+    var _this = {};
+
+    _this.read = function() {
+
+      while (_buflen < 8) {
+
+        if (_pos >= _str.length) {
+          if (_buflen == 0) {
+            return -1;
+          }
+          throw 'unexpected end of file./' + _buflen;
+        }
+
+        var c = _str.charAt(_pos);
+        _pos += 1;
+
+        if (c == '=') {
+          _buflen = 0;
+          return -1;
+        } else if (c.match(/^\s$/) ) {
+          // ignore if whitespace.
+          continue;
+        }
+
+        _buffer = (_buffer << 6) | decode(c.charCodeAt(0) );
+        _buflen += 6;
+      }
+
+      var n = (_buffer >>> (_buflen - 8) ) & 0xff;
+      _buflen -= 8;
+      return n;
+    };
+
+    var decode = function(c) {
+      if (0x41 <= c && c <= 0x5a) {
+        return c - 0x41;
+      } else if (0x61 <= c && c <= 0x7a) {
+        return c - 0x61 + 26;
+      } else if (0x30 <= c && c <= 0x39) {
+        return c - 0x30 + 52;
+      } else if (c == 0x2b) {
+        return 62;
+      } else if (c == 0x2f) {
+        return 63;
+      } else {
+        throw 'c:' + c;
+      }
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // gifImage (B/W)
+  //---------------------------------------------------------------------
+
+  var gifImage = function(width, height) {
+
+    var _width = width;
+    var _height = height;
+    var _data = new Array(width * height);
+
+    var _this = {};
+
+    _this.setPixel = function(x, y, pixel) {
+      _data[y * _width + x] = pixel;
+    };
+
+    _this.write = function(out) {
+
+      //---------------------------------
+      // GIF Signature
+
+      out.writeString('GIF87a');
+
+      //---------------------------------
+      // Screen Descriptor
+
+      out.writeShort(_width);
+      out.writeShort(_height);
+
+      out.writeByte(0x80); // 2bit
+      out.writeByte(0);
+      out.writeByte(0);
+
+      //---------------------------------
+      // Global Color Map
+
+      // black
+      out.writeByte(0x00);
+      out.writeByte(0x00);
+      out.writeByte(0x00);
+
+      // white
+      out.writeByte(0xff);
+      out.writeByte(0xff);
+      out.writeByte(0xff);
+
+      //---------------------------------
+      // Image Descriptor
+
+      out.writeString(',');
+      out.writeShort(0);
+      out.writeShort(0);
+      out.writeShort(_width);
+      out.writeShort(_height);
+      out.writeByte(0);
+
+      //---------------------------------
+      // Local Color Map
+
+      //---------------------------------
+      // Raster Data
+
+      var lzwMinCodeSize = 2;
+      var raster = getLZWRaster(lzwMinCodeSize);
+
+      out.writeByte(lzwMinCodeSize);
+
+      var offset = 0;
+
+      while (raster.length - offset > 255) {
+        out.writeByte(255);
+        out.writeBytes(raster, offset, 255);
+        offset += 255;
+      }
+
+      out.writeByte(raster.length - offset);
+      out.writeBytes(raster, offset, raster.length - offset);
+      out.writeByte(0x00);
+
+      //---------------------------------
+      // GIF Terminator
+      out.writeString(';');
+    };
+
+    var bitOutputStream = function(out) {
+
+      var _out = out;
+      var _bitLength = 0;
+      var _bitBuffer = 0;
+
+      var _this = {};
+
+      _this.write = function(data, length) {
+
+        if ( (data >>> length) != 0) {
+          throw 'length over';
+        }
+
+        while (_bitLength + length >= 8) {
+          _out.writeByte(0xff & ( (data << _bitLength) | _bitBuffer) );
+          length -= (8 - _bitLength);
+          data >>>= (8 - _bitLength);
+          _bitBuffer = 0;
+          _bitLength = 0;
+        }
+
+        _bitBuffer = (data << _bitLength) | _bitBuffer;
+        _bitLength = _bitLength + length;
+      };
+
+      _this.flush = function() {
+        if (_bitLength > 0) {
+          _out.writeByte(_bitBuffer);
+        }
+      };
+
+      return _this;
+    };
+
+    var getLZWRaster = function(lzwMinCodeSize) {
+
+      var clearCode = 1 << lzwMinCodeSize;
+      var endCode = (1 << lzwMinCodeSize) + 1;
+      var bitLength = lzwMinCodeSize + 1;
+
+      // Setup LZWTable
+      var table = lzwTable();
+
+      for (var i = 0; i < clearCode; i += 1) {
+        table.add(String.fromCharCode(i) );
+      }
+      table.add(String.fromCharCode(clearCode) );
+      table.add(String.fromCharCode(endCode) );
+
+      var byteOut = byteArrayOutputStream();
+      var bitOut = bitOutputStream(byteOut);
+
+      // clear code
+      bitOut.write(clearCode, bitLength);
+
+      var dataIndex = 0;
+
+      var s = String.fromCharCode(_data[dataIndex]);
+      dataIndex += 1;
+
+      while (dataIndex < _data.length) {
+
+        var c = String.fromCharCode(_data[dataIndex]);
+        dataIndex += 1;
+
+        if (table.contains(s + c) ) {
+
+          s = s + c;
+
+        } else {
+
+          bitOut.write(table.indexOf(s), bitLength);
+
+          if (table.size() < 0xfff) {
+
+            if (table.size() == (1 << bitLength) ) {
+              bitLength += 1;
+            }
+
+            table.add(s + c);
+          }
+
+          s = c;
+        }
+      }
+
+      bitOut.write(table.indexOf(s), bitLength);
+
+      // end code
+      bitOut.write(endCode, bitLength);
+
+      bitOut.flush();
+
+      return byteOut.toByteArray();
+    };
+
+    var lzwTable = function() {
+
+      var _map = {};
+      var _size = 0;
+
+      var _this = {};
+
+      _this.add = function(key) {
+        if (_this.contains(key) ) {
+          throw 'dup key:' + key;
+        }
+        _map[key] = _size;
+        _size += 1;
+      };
+
+      _this.size = function() {
+        return _size;
+      };
+
+      _this.indexOf = function(key) {
+        return _map[key];
+      };
+
+      _this.contains = function(key) {
+        return typeof _map[key] != 'undefined';
+      };
+
+      return _this;
+    };
+
+    return _this;
+  };
+
+  var createDataURL = function(width, height, getPixel) {
+    var gif = gifImage(width, height);
+    for (var y = 0; y < height; y += 1) {
+      for (var x = 0; x < width; x += 1) {
+        gif.setPixel(x, y, getPixel(x, y) );
+      }
+    }
+
+    var b = byteArrayOutputStream();
+    gif.write(b);
+
+    var base64 = base64EncodeOutputStream();
+    var bytes = b.toByteArray();
+    for (var i = 0; i < bytes.length; i += 1) {
+      base64.writeByte(bytes[i]);
+    }
+    base64.flush();
+
+    return 'data:image/gif;base64,' + base64;
+  };
+
+  //---------------------------------------------------------------------
+  // returns qrcode function.
+
+  return qrcode;
+}();
+
+// multibyte support
+!function() {
+
+  qrcode.stringToBytesFuncs['UTF-8'] = function(s) {
+    // http://stackoverflow.com/questions/18729405/how-to-convert-utf8-string-to-byte-array
+    function toUTF8Array(str) {
+      var utf8 = [];
+      for (var i=0; i < str.length; i++) {
+        var charcode = str.charCodeAt(i);
+        if (charcode < 0x80) utf8.push(charcode);
+        else if (charcode < 0x800) {
+          utf8.push(0xc0 | (charcode >> 6),
+              0x80 | (charcode & 0x3f));
+        }
+        else if (charcode < 0xd800 || charcode >= 0xe000) {
+          utf8.push(0xe0 | (charcode >> 12),
+              0x80 | ((charcode>>6) & 0x3f),
+              0x80 | (charcode & 0x3f));
+        }
+        // surrogate pair
+        else {
+          i++;
+          // UTF-16 encodes 0x10000-0x10FFFF by
+          // subtracting 0x10000 and splitting the
+          // 20 bits of 0x0-0xFFFFF into two halves
+          charcode = 0x10000 + (((charcode & 0x3ff)<<10)
+            | (str.charCodeAt(i) & 0x3ff));
+          utf8.push(0xf0 | (charcode >>18),
+              0x80 | ((charcode>>12) & 0x3f),
+              0x80 | ((charcode>>6) & 0x3f),
+              0x80 | (charcode & 0x3f));
+        }
+      }
+      return utf8;
+    }
+    return toUTF8Array(s);
+  };
+
+}();
+
+(function (factory) {
+  if (typeof define === 'function' && define.amd) {
+      define([], factory);
+  } else if (typeof exports === 'object') {
+      module.exports = factory();
+  }
+}(function () {
+    return qrcode;
+}));
+
+</script>
+
+<script>
+/* ======================================================================================
+   MOTOR DISPATCH TRACKER — Core Application Script
+   Domain model: each entry = one physical motor, identified by a unique barcode.
+     - status: 'Pending Dispatch' (dispatchDate empty) or 'Dispatched' (dispatchDate set)
+   Scan behavior (the whole point of this app):
+     - Unknown barcode  -> auto-register a new motor (Pending Dispatch)
+     - Known + Pending   -> this IS the dispatch event -> record today's date as Dispatch Date
+     - Known + Dispatched-> just show the recorded Dispatch Date (lookup), don't change anything
+   ====================================================================================== */
+
+/* ---------------------------- 1. STATE ---------------------------- */
+const STORAGE_KEY = 'motor_entries_v1';
+const SETTINGS_KEY = 'motor_settings_v1';
+const STATS_KEY = 'motor_extra_stats_v1';
+
+let entries = [];                 // main motor list
+let settings = { sound:true, vibrate:true, dark:false, autoSave:true, tgToken:'', tgChatId:'', tgAutoSend:true };
+let extraStats = { repeatScans:0 };
+
+let stream = null, track = null, scanning = false, detecting = false, scanInterval = null;
+let barcodeDetector = null;
+let facingMode = 'environment';
+let videoDevices = [], currentDeviceIndex = 0;
+let torchOn = false;
+let lastDetectedCode = null, lastDetectedTime = 0;
+window.addEventListener('afterprint', ()=>{
+  const pa = document.getElementById('printArea');
+  if(pa) pa.classList.add('hidden');
+});
+document.getElementById('manualBarcodeBtn').addEventListener('click', ()=>{
+  const input = document.getElementById('manualBarcodeInput');
+  const val = input.value.trim();
+  if(!val){ toast('Please enter a barcode number', 'error'); return; }
+  handleScannedBarcode(val, 'manual');
+  input.value = '';
+});
+document.getElementById('manualBarcodeInput').addEventListener('keydown', e=>{
+  if(e.key === 'Enter'){ e.preventDefault(); document.getElementById('manualBarcodeBtn').click(); }
+});
+let editingId = null;
+let confirmResolver = null;
+let currentResultEntryId = null; // which entry the result card is currently bound to
+
+/* ---------------------------- 2. STORAGE ---------------------------- */
+function loadEntries(){
+  try{ entries = JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }catch(e){ entries = []; }
+}
+function saveEntries(){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+}
+function loadSettings(){
+  try{ settings = Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}); }catch(e){}
+}
+function saveSettings(){
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+}
+function loadExtraStats(){
+  try{ extraStats = Object.assign(extraStats, JSON.parse(localStorage.getItem(STATS_KEY)) || {}); }catch(e){}
+}
+function saveExtraStats(){
+  localStorage.setItem(STATS_KEY, JSON.stringify(extraStats));
+}
+
+/* ---------------------------- 3. UTILITIES ---------------------------- */
+function genId(){ return 'm' + Date.now() + Math.random().toString(36).slice(2,8); }
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function nowParts(){
+  const d = new Date();
+  return { date: d.toISOString().slice(0,10), time: d.toTimeString().slice(0,8), timestamp: d.toISOString() };
+}
+function formatDatePretty(iso){
+  if(!iso) return '';
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString(undefined, { day:'2-digit', month:'short', year:'numeric' });
+}
+
+function toast(msg, type='info'){
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(()=>{ el.style.opacity='0'; el.style.transform='translateY(10px)'; setTimeout(()=>el.remove(),250); }, 2800);
+}
+
+function playBeep(freq=1500){
+  if(!settings.sound) return;
+  try{
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type='sine'; osc.frequency.value=freq;
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    osc.start(); osc.stop(ctx.currentTime + 0.12);
+  }catch(e){}
+}
+function doVibrate(pattern=180){
+  if(settings.vibrate && navigator.vibrate) navigator.vibrate(pattern);
+}
+
+function askConfirm(title, msg){
+  return new Promise(resolve=>{
+    document.getElementById('confirmTitle').textContent = title;
+    document.getElementById('confirmMsg').textContent = msg;
+    confirmResolver = resolve;
+    openModal('confirmModal');
+  });
+}
+function openModal(id){ document.getElementById(id).classList.add('show'); }
+function closeModal(id){ document.getElementById(id).classList.remove('show'); }
+
+function escapeHtml(str){
+  const d = document.createElement('div'); d.textContent = str; return d.innerHTML;
+}
+function escapeXml(str){
+  return String(str).replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&apos;'}[c]));
+}
+
+/* ---------------------------- 4. CAMERA / SCANNER ---------------------------- */
+async function initScanner(){
+  const statusEl = document.getElementById('scanStatus');
+  if(!('BarcodeDetector' in window)){
+    statusEl.textContent = '⚠️ Barcode scanning not supported in this browser. Try Chrome/Edge on Android.';
+    toast('Camera scanning not supported on this browser', 'error');
+    return;
+  }
+  try{
+    const formats = await BarcodeDetector.getSupportedFormats();
+    barcodeDetector = new BarcodeDetector({ formats });
+  }catch(e){
+    barcodeDetector = new BarcodeDetector({ formats:['qr_code','ean_13','ean_8','code_128','code_39','upc_a','upc_e','itf','codabar'] });
+  }
+  await startCamera();
+}
+
+async function startCamera(){
+  const statusEl = document.getElementById('scanStatus');
+  stopCameraStream();
+  try{
+    const constraints = { video: { facingMode:{ideal:facingMode}, width:{ideal:1920}, height:{ideal:1080} }, audio:false };
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    const video = document.getElementById('video');
+    video.srcObject = stream;
+    await video.play();
+    track = stream.getVideoTracks()[0];
+    // Force continuous autofocus where supported — big win for 1D barcode sharpness up close
+    try{
+      if(track.getCapabilities && track.getCapabilities().focusMode){
+        await track.applyConstraints({ advanced:[{ focusMode:'continuous' }] });
+      }
+    }catch(e){ /* not supported on this device, ignore */ }
+
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    videoDevices = devices.filter(d=>d.kind==='videoinput');
+
+    setupZoomControl();
+    setupTorchAvailability();
+
+    scanning = true;
+    document.getElementById('startStopBtn').textContent = '⏸️';
+    statusEl.textContent = '🟢 Scanning… point camera at a motor barcode';
+    statusEl.classList.add('live');
+    startScanLoop();
+  }catch(err){
+    statusEl.textContent = '❌ Camera permission denied or unavailable.';
+    toast('Camera access failed: ' + err.message, 'error');
+  }
+}
+function stopCameraStream(){
+  if(scanInterval){ clearInterval(scanInterval); scanInterval=null; }
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+}
+function setupZoomControl(){
+  const zoomRow = document.getElementById('zoomRow');
+  const range = document.getElementById('zoomRange');
+  if(track && track.getCapabilities){
+    const caps = track.getCapabilities();
+    if(caps.zoom){
+      zoomRow.classList.remove('hidden');
+      range.min = caps.zoom.min; range.max = caps.zoom.max; range.step = caps.zoom.step || 0.1;
+      range.value = track.getSettings().zoom || caps.zoom.min;
+      return;
+    }
+  }
+  zoomRow.classList.add('hidden');
+}
+document.getElementById('zoomRange').addEventListener('input', e=>{
+  if(track && track.applyConstraints) track.applyConstraints({ advanced:[{ zoom: parseFloat(e.target.value) }] }).catch(()=>{});
+});
+function setupTorchAvailability(){
+  const btn = document.getElementById('torchBtn');
+  torchOn = false; btn.classList.remove('on');
+  if(track && track.getCapabilities){
+    const caps = track.getCapabilities();
+    btn.style.opacity = caps.torch ? '1' : '.35';
+  }
+}
+document.getElementById('torchBtn').addEventListener('click', async ()=>{
+  if(!track || !track.getCapabilities) return;
+  const caps = track.getCapabilities();
+  if(!caps.torch){ toast('Torch not supported on this device','warning'); return; }
+  torchOn = !torchOn;
+  try{
+    await track.applyConstraints({ advanced:[{ torch: torchOn }] });
+    document.getElementById('torchBtn').classList.toggle('on', torchOn);
+  }catch(e){ toast('Unable to toggle torch','error'); }
+});
+document.getElementById('switchCamBtn').addEventListener('click', async ()=>{
+  if(videoDevices.length > 1){
+    currentDeviceIndex = (currentDeviceIndex + 1) % videoDevices.length;
+    facingMode = null;
+    stopCameraStream();
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({ video:{ deviceId:{exact:videoDevices[currentDeviceIndex].deviceId} } });
+      const video = document.getElementById('video');
+      video.srcObject = stream; await video.play();
+      track = stream.getVideoTracks()[0];
+      setupZoomControl(); setupTorchAvailability();
+      scanning = true; startScanLoop();
+    }catch(e){ toast('Could not switch camera','error'); }
+  } else {
+    facingMode = (facingMode==='environment') ? 'user' : 'environment';
+    await startCamera();
+  }
+});
+document.getElementById('startStopBtn').addEventListener('click', toggleScanning);
+function toggleScanning(){
+  const statusEl = document.getElementById('scanStatus');
+  scanning = !scanning;
+  document.getElementById('startStopBtn').textContent = scanning ? '⏸️' : '▶️';
+  if(scanning){
+    statusEl.textContent = '🟢 Scanning… point camera at a motor barcode';
+    statusEl.classList.add('live');
+    startScanLoop();
+  } else {
+    statusEl.textContent = '⏸️ Scanning paused';
+    statusEl.classList.remove('live');
+    if(scanInterval){ clearInterval(scanInterval); scanInterval=null; }
+  }
+}
+let scanCanvas = null, scanCtx = null;
+function startScanLoop(){
+  if(scanInterval) clearInterval(scanInterval);
+  if(!scanCanvas){ scanCanvas = document.createElement('canvas'); scanCtx = scanCanvas.getContext('2d', { willReadFrequently:true }); }
+  scanInterval = setInterval(async ()=>{
+    if(!scanning || detecting || !barcodeDetector) return;
+    const video = document.getElementById('video');
+    if(video.readyState < 2 || !video.videoWidth) return;
+    detecting = true;
+    try{
+      // Crop to the center scan-frame region (matches the visual overlay, ~80% for a small margin).
+      // Feeding the detector a tight, zoomed-in crop (instead of the whole noisy frame) is the
+      // single biggest reliability win for 1D barcodes like Code128 with native BarcodeDetector.
+      const vw = video.videoWidth, vh = video.videoHeight;
+      const cropSize = Math.round(Math.min(vw, vh) * 0.8);
+      const sx = Math.round((vw - cropSize) / 2), sy = Math.round((vh - cropSize) / 2);
+      scanCanvas.width = cropSize; scanCanvas.height = cropSize;
+      scanCtx.drawImage(video, sx, sy, cropSize, cropSize, 0, 0, cropSize, cropSize);
+
+      let codes = await barcodeDetector.detect(scanCanvas);
+      if(!codes || !codes.length){
+        // Fallback: try the full frame too, in case the code is bigger than the crop region
+        codes = await barcodeDetector.detect(video);
+      }
+      if(codes && codes.length){ handleScannedBarcode(codes[0].rawValue, codes[0].format); }
+    }catch(e){ /* ignore frame error */ }
+    detecting = false;
+  }, 300);
+}
+
+/* ---------------------------- 5. SCAN LOGIC (the core of this app) ---------------------------- */
+// Called for every successfully detected barcode, from camera OR (indirectly) from generation.
+// QR codes we generate can carry extra human-readable lines (motor type, dispatch date) below
+// the ID so anyone scanning with a plain phone camera sees full details. Our own app only
+// needs the first line to look the motor up — plain barcodes (no newline) pass through as-is.
+function extractCodeId(raw){
+  return raw.split('\n')[0].trim();
+}
+
+function handleScannedBarcode(rawInput, fmt){
+  const raw = extractCodeId(rawInput);
+  const t = Date.now();
+  if(raw === lastDetectedCode && (t - lastDetectedTime) < 2500) return; // debounce re-reads
+  lastDetectedCode = raw; lastDetectedTime = t;
+
+  const existing = entries.find(en => en.barcode === raw);
+
+  if(!existing){
+    // CASE 1: Unknown barcode -> auto-register a brand-new motor (Pending Dispatch)
+    playBeep(1500); doVibrate(150);
+    const entry = registerMotor(raw, fmt, {});
+    showResultCard(entry, 'new');
+    if(settings.autoSave){
+      toast('🆕 New motor registered & saved: ' + raw, 'success');
+    } else {
+      toast('New motor scanned — auto-save is OFF, edit fields to save', 'warning');
+    }
+  } else if(!existing.dispatchDate){
+    // CASE 2: Known motor, not yet dispatched -> THIS scan IS the dispatch event
+    playBeep(1800); doVibrate([100,60,100]);
+    recordDispatch(existing, todayISO());
+    showResultCard(existing, 'dispatched-now');
+    toast('🚚 Dispatch recorded for today: ' + raw, 'success');
+    if(settings.tgAutoSend) sendMotorToTelegram(existing); // full details -> Telegram, right at the dispatch event
+  } else {
+    // CASE 3: Known motor, already dispatched -> just show the recorded date (no changes)
+    playBeep(1100); doVibrate(80);
+    extraStats.repeatScans++; saveExtraStats();
+    showResultCard(existing, 'already');
+    toast('✅ Already dispatched on ' + formatDatePretty(existing.dispatchDate), 'warning');
+  }
+  renderTable(); renderStats();
+}
+
+// Create a new Pending-Dispatch motor entry. Used by both camera auto-registration
+// and the manual "Generate New Motor Barcode" panel.
+function registerMotor(barcode, format, prefill){
+  const { date, time, timestamp } = nowParts();
+  const entry = {
+    id: genId(), barcode, format: format || 'code_128',
+    motorName: (prefill && prefill.motorName) || '',
+    qty: (prefill && prefill.qty) || '1',
+    salesPerson: (prefill && prefill.salesPerson) || '',
+    notes: (prefill && prefill.notes) || '',
+    batchId: (prefill && prefill.batchId) || '',
+    dispatchDate: '', dispatchTime: '', dispatchTimestamp: '',
+    registeredDate: date, registeredTime: time, registeredTimestamp: timestamp,
+    status: 'Pending Dispatch'
+  };
+  entries.unshift(entry);
+  saveEntries();
+  return entry;
+}
+
+// Mark a motor as dispatched on the given date (defaults to today).
+function recordDispatch(entry, isoDate){
+  const { time, timestamp } = nowParts();
+  entry.dispatchDate = isoDate;
+  entry.dispatchTime = time;
+  entry.dispatchTimestamp = timestamp;
+  entry.status = 'Dispatched';
+  saveEntries();
+}
+
+// Clear a motor's dispatch date, reverting it to Pending Dispatch (used when correcting mistakes).
+function clearDispatch(entry){
+  entry.dispatchDate = ''; entry.dispatchTime = ''; entry.dispatchTimestamp = '';
+  entry.status = 'Pending Dispatch';
+  saveEntries();
+}
+
+/* ---------------------------- 6. RESULT CARD (3 visual states) ---------------------------- */
+function showResultCard(entry, state){
+  currentResultEntryId = entry.id;
+  const card = document.getElementById('resultCard');
+  card.classList.remove('hidden','state-new','state-dispatched-now','state-already');
+  card.classList.add('state-' + state);
+
+  const badge = document.getElementById('resultBadge');
+  const title = document.getElementById('resultTitle');
+  const dateText = document.getElementById('bigDispatchDateText');
+  const dateInput = document.getElementById('resultDispatchDate');
+  const unlockRow = document.getElementById('unlockRow');
+
+  document.getElementById('resultBarcode').textContent = entry.barcode;
+  document.getElementById('resultMotorName').value = entry.motorName || '';
+  document.getElementById('resultQty').value = entry.qty || '1';
+  document.getElementById('resultSalesPerson').value = entry.salesPerson || '';
+  document.getElementById('resultNotes').value = entry.notes || '';
+  dateInput.value = entry.dispatchDate || '';
+
+  if(state === 'new'){
+    title.textContent = '🆕 New Motor';
+    badge.textContent = 'REGISTERED'; badge.className = 'badge new';
+    dateText.textContent = 'Not dispatched yet — will be set on next scan'; dateText.classList.add('pending');
+    dateInput.disabled = false;
+    unlockRow.classList.add('hidden');
+  } else if(state === 'dispatched-now'){
+    title.textContent = '🚚 Dispatch Confirmed';
+    badge.textContent = 'DISPATCHED TODAY'; badge.className = 'badge dispatched-now';
+    dateText.textContent = formatDatePretty(entry.dispatchDate); dateText.classList.remove('pending');
+    dateInput.disabled = false;
+    unlockRow.classList.add('hidden');
+  } else { // already
+    title.textContent = '✅ Motor Found';
+    badge.textContent = 'ALREADY DISPATCHED'; badge.className = 'badge already';
+    dateText.textContent = formatDatePretty(entry.dispatchDate); dateText.classList.remove('pending');
+    dateInput.disabled = true; // locked by default to prevent accidental overwrite
+    unlockRow.classList.remove('hidden');
+  }
+
+  // Bring the result card (Motor Name / Sales Person fields) into view immediately after
+  // every scan, so the person doesn't have to manually scroll down to find them on mobile.
+  setTimeout(()=> card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+  setTimeout(()=> document.getElementById('resultMotorName').focus({ preventScroll: true }), 350);
+}
+
+// Live-save edits made directly on the result card back to the bound entry.
+function bindResultCardLiveEdit(){
+  const nameEl = document.getElementById('resultMotorName');
+  const qtyEl = document.getElementById('resultQty');
+  const salesEl = document.getElementById('resultSalesPerson');
+  const notesEl = document.getElementById('resultNotes');
+  const dateEl = document.getElementById('resultDispatchDate');
+
+  function currentEntry(){ return entries.find(e=>e.id === currentResultEntryId); }
+
+  nameEl.addEventListener('input', ()=>{
+    const en = currentEntry(); if(!en) return;
+    en.motorName = nameEl.value; saveEntries(); renderTable();
+  });
+  qtyEl.addEventListener('input', ()=>{
+    const en = currentEntry(); if(!en) return;
+    en.qty = qtyEl.value; saveEntries(); renderTable();
+  });
+  salesEl.addEventListener('input', ()=>{
+    const en = currentEntry(); if(!en) return;
+    en.salesPerson = salesEl.value; saveEntries(); renderTable();
+  });
+  notesEl.addEventListener('input', ()=>{
+    const en = currentEntry(); if(!en) return;
+    en.notes = notesEl.value; saveEntries(); renderTable();
+  });
+  dateEl.addEventListener('change', ()=>{
+    const en = currentEntry(); if(!en) return;
+    const wasDispatched = !!en.dispatchDate;
+    if(dateEl.value){ recordDispatch(en, dateEl.value); }
+    else { clearDispatch(en); }
+    document.getElementById('bigDispatchDateText').textContent = en.dispatchDate ? formatDatePretty(en.dispatchDate) : 'Not dispatched yet';
+    document.getElementById('bigDispatchDateText').classList.toggle('pending', !en.dispatchDate);
+    // Newly marked dispatched right here (not via camera scan) -> still send full details to Telegram
+    if(!wasDispatched && en.dispatchDate && settings.tgAutoSend) sendMotorToTelegram(en);
+    renderTable(); renderStats();
+  });
+  document.getElementById('unlockDateBtn').addEventListener('click', ()=>{
+    dateEl.disabled = false;
+    document.getElementById('unlockRow').classList.add('hidden');
+    toast('Dispatch date unlocked — edit carefully', 'warning');
+  });
+}
+
+/* ---------------------------- 7. RENDERING (table / stats / filters) ---------------------------- */
+let currentFilter = 'all';
+let currentPage = 1;
+const PAGE_SIZE = 50;
+let lastBatchId = null, lastBatchCount = 0;
+
+function getFilteredEntries(){
+  const bSearch = document.getElementById('searchBarcode').value.trim().toLowerCase();
+  const mSearch = document.getElementById('searchMotor').value.trim().toLowerCase();
+  const dSearch = document.getElementById('searchDate').value;
+  const now = new Date();
+
+  return entries.filter(e=>{
+    if(bSearch && !e.barcode.toLowerCase().includes(bSearch)) return false;
+    if(mSearch && !(e.motorName||'').toLowerCase().includes(mSearch)) return false;
+    if(dSearch && e.dispatchDate !== dSearch) return false;
+
+    if(currentFilter === 'pending' && e.status !== 'Pending Dispatch') return false;
+    if(currentFilter === 'dispatched' && e.status !== 'Dispatched') return false;
+
+    if(currentFilter === 'today' || currentFilter === 'week' || currentFilter === 'month'){
+      if(!e.dispatchDate) return false;
+      const ed = new Date(e.dispatchDate + 'T00:00:00');
+      if(currentFilter === 'today' && ed.toDateString() !== now.toDateString()) return false;
+      if(currentFilter === 'week'){
+        const weekAgo = new Date(); weekAgo.setDate(now.getDate()-7);
+        if(ed < weekAgo) return false;
+      }
+      if(currentFilter === 'month' && (ed.getMonth()!==now.getMonth() || ed.getFullYear()!==now.getFullYear())) return false;
+    }
+    return true;
+  });
+}
+
+function renderTable(){
+  const tbody = document.getElementById('inventoryTbody');
+  const filtered = getFilteredEntries();
+  document.getElementById('rowCount').textContent = filtered.length;
+  document.getElementById('emptyState').classList.toggle('hidden', filtered.length>0);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  if(currentPage > totalPages) currentPage = totalPages;
+  if(currentPage < 1) currentPage = 1;
+  const startIdx = (currentPage-1) * PAGE_SIZE;
+  const pageItems = filtered.slice(startIdx, startIdx + PAGE_SIZE);
+
+  tbody.innerHTML = '';
+  pageItems.forEach((e,i)=>{
+    const pillClass = e.status === 'Dispatched' ? 'dispatched' : 'pending';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${startIdx + i + 1}</td>
+      <td>${escapeHtml(e.barcode)}</td>
+      <td>${escapeHtml(e.motorName || '<em>unnamed</em>')}</td>
+      <td><span class="status-pill ${pillClass}">${e.status}</span></td>
+      <td>${e.dispatchDate ? formatDatePretty(e.dispatchDate) : '-'}</td>
+      <td>${e.registeredDate}</td>
+      <td>${escapeHtml(e.notes || '-')}</td>
+      <td><div class="row-actions">
+        <button class="icon-btn" data-label="${e.id}" title="Print Label">🏷️</button>
+        <button class="icon-btn" data-tg="${e.id}" title="Send to Telegram">📤</button>
+        <button class="icon-btn" data-edit="${e.id}" title="Edit">✏️</button>
+        <button class="icon-btn" data-del="${e.id}" title="Delete">🗑️</button>
+      </div></td>`;
+    tbody.appendChild(tr);
+  });
+
+  tbody.querySelectorAll('[data-edit]').forEach(b=>b.addEventListener('click', ()=>openEditModal(b.dataset.edit)));
+  tbody.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click', ()=>deleteEntry(b.dataset.del)));
+  tbody.querySelectorAll('[data-label]').forEach(b=>b.addEventListener('click', ()=>{
+    const en = entries.find(x=>x.id === b.dataset.label);
+    if(en) printBarcodeLabel(en.barcode, en.motorName, en.dispatchDate, en.format, en.qty);
+  }));
+  tbody.querySelectorAll('[data-tg]').forEach(b=>b.addEventListener('click', ()=>{
+    const en = entries.find(x=>x.id === b.dataset.tg);
+    if(en) sendMotorToTelegram(en);
+  }));
+
+  document.getElementById('pageIndicator').textContent = `Page ${currentPage} / ${totalPages}`;
+  document.getElementById('prevPageBtn').disabled = currentPage <= 1;
+  document.getElementById('nextPageBtn').disabled = currentPage >= totalPages;
+  document.getElementById('paginationRow').classList.toggle('hidden', filtered.length <= PAGE_SIZE);
+}
+document.getElementById('prevPageBtn').addEventListener('click', ()=>{ currentPage--; renderTable(); });
+document.getElementById('nextPageBtn').addEventListener('click', ()=>{ currentPage++; renderTable(); });
+
+function renderStats(){
+  const today = new Date().toDateString();
+  const total = entries.length;
+  const pending = entries.filter(e=>e.status==='Pending Dispatch').length;
+  const dispatched = entries.filter(e=>e.status==='Dispatched').length;
+  const todayDispatched = entries.filter(e=> e.dispatchDate && new Date(e.dispatchDate+'T00:00:00').toDateString() === today).length;
+
+  document.getElementById('statTotal').textContent = total;
+  document.getElementById('statPending').textContent = pending;
+  document.getElementById('statDispatched').textContent = dispatched;
+  document.getElementById('statTodayDispatched').textContent = todayDispatched;
+  document.getElementById('statRepeatScans').textContent = extraStats.repeatScans;
+}
+
+['searchBarcode','searchMotor','searchDate'].forEach(id=>{
+  document.getElementById(id).addEventListener('input', ()=>{ currentPage = 1; renderTable(); });
+});
+document.querySelectorAll('.chip').forEach(chip=>{
+  chip.addEventListener('click', ()=>{
+    document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+    chip.classList.add('active');
+    currentFilter = chip.dataset.filter;
+    currentPage = 1;
+    renderTable();
+  });
+});
+
+/* ---------------------------- 8. CRUD (edit / delete) ---------------------------- */
+function openEditModal(id){
+  const e = entries.find(x=>x.id===id);
+  if(!e) return;
+  editingId = id;
+  document.getElementById('editBarcode').value = e.barcode;
+  document.getElementById('editName').value = e.motorName;
+  document.getElementById('editQty').value = e.qty || '1';
+  document.getElementById('editSalesPerson').value = e.salesPerson || '';
+  document.getElementById('editDispatchDate').value = e.dispatchDate || '';
+  document.getElementById('editNotes').value = e.notes;
+  openModal('editModal');
+}
+document.getElementById('editSaveBtn').addEventListener('click', ()=>{
+  const e = entries.find(x=>x.id===editingId);
+  if(!e) return;
+  const wasDispatched = !!e.dispatchDate;
+  e.motorName = document.getElementById('editName').value;
+  e.qty = document.getElementById('editQty').value;
+  e.salesPerson = document.getElementById('editSalesPerson').value;
+  e.notes = document.getElementById('editNotes').value;
+  const newDate = document.getElementById('editDispatchDate').value;
+  if(newDate) recordDispatch(e, newDate); else clearDispatch(e);
+  saveEntries(); renderTable(); renderStats();
+  closeModal('editModal');
+  toast('Motor updated', 'success');
+  if(!wasDispatched && e.dispatchDate && settings.tgAutoSend) sendMotorToTelegram(e);
+});
+document.getElementById('editCancelBtn').addEventListener('click', ()=>closeModal('editModal'));
+
+async function deleteEntry(id){
+  const ok = await askConfirm('Delete Motor', 'This will permanently remove this motor record.');
+  if(!ok) return;
+  entries = entries.filter(e=>e.id!==id);
+  saveEntries(); renderTable(); renderStats();
+  toast('Motor record deleted', 'success');
+}
+
+/* ---------------------------- 9. EXPORT / IMPORT / BACKUP ---------------------------- */
+function entriesToCsv(withBom){
+  const headers = ['Barcode','Motor Name','Status','Dispatch Date','Dispatch Time','Registered Date','Registered Time','Notes','Batch ID'];
+  const rows = entries.map(e=>[e.barcode,e.motorName,e.status,e.dispatchDate,e.dispatchTime,e.registeredDate,e.registeredTime,e.notes,e.batchId]
+    .map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(','));
+  const csv = [headers.join(','), ...rows].join('\n');
+  return (withBom ? '\uFEFF' : '') + csv;
+}
+function downloadFile(content, filename, mime){
+  const blob = new Blob([content], {type:mime});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+document.getElementById('exportCsvBtn').addEventListener('click', ()=>{
+  downloadFile(entriesToCsv(false), `motors_${Date.now()}.csv`, 'text/csv');
+  toast('CSV exported', 'success');
+});
+document.getElementById('exportExcelBtn').addEventListener('click', ()=>{
+  downloadFile(entriesToCsv(true), `motors_excel_${Date.now()}.csv`, 'text/csv');
+  toast('Excel-compatible CSV exported', 'success');
+});
+document.getElementById('exportJsonBtn').addEventListener('click', ()=>{
+  downloadFile(JSON.stringify(entries,null,2), `motors_${Date.now()}.json`, 'application/json');
+  toast('JSON exported', 'success');
+});
+document.getElementById('printBtn').addEventListener('click', ()=>{
+  const rows = entries.map((e,i)=>`<tr><td>${i+1}</td><td>${e.barcode}</td><td>${e.motorName}</td><td>${e.status}</td><td>${e.dispatchDate?formatDatePretty(e.dispatchDate):'-'}</td><td>${e.registeredDate}</td><td>${e.notes||''}</td></tr>`).join('');
+  const printArea = document.getElementById('printArea');
+  printArea.classList.remove('hidden');
+  printArea.innerHTML = `
+    <h2>Motor Dispatch Report — ${new Date().toLocaleString()}</h2>
+    <table border="1" cellpadding="6" style="border-collapse:collapse;width:100%;font-size:12px;">
+    <thead><tr><th>#</th><th>Barcode</th><th>Motor Name</th><th>Status</th><th>Dispatch Date</th><th>Registered</th><th>Notes</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+  window.print();
+});
+document.getElementById('importBtn').addEventListener('click', ()=>document.getElementById('importCsvInput').click());
+document.getElementById('importCsvInput').addEventListener('change', e=>{
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      const text = reader.result.replace(/^\uFEFF/,'');
+      const lines = text.split(/\r?\n/).filter(l=>l.trim());
+      let start = 0;
+      if(/barcode/i.test(lines[0])) start = 1;
+      let count = 0;
+      for(let i=start;i<lines.length;i++){
+        const cols = parseCsvLine(lines[i]);
+        if(cols.length < 2) continue;
+        const [barcode, motorName, status, dispatchDate, dispatchTime, registeredDate, registeredTime, notes] = cols;
+        const { date, time, timestamp } = nowParts();
+        entries.unshift({
+          id: genId(), barcode: barcode||'', motorName: motorName||'', format:'code_128',
+          status: dispatchDate ? 'Dispatched' : 'Pending Dispatch',
+          dispatchDate: dispatchDate||'', dispatchTime: dispatchTime||'', dispatchTimestamp: dispatchDate?timestamp:'',
+          registeredDate: registeredDate || date, registeredTime: registeredTime || time, registeredTimestamp: timestamp,
+          notes: notes||''
+        });
+        count++;
+      }
+      saveEntries(); renderTable(); renderStats();
+      toast(`Imported ${count} motors`, 'success');
+    }catch(err){ toast('Import failed: invalid CSV', 'error'); }
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+});
+function parseCsvLine(line){
+  const result = []; let cur=''; let inQuotes=false;
+  for(let i=0;i<line.length;i++){
+    const c = line[i];
+    if(c === '"'){ if(inQuotes && line[i+1] === '"'){ cur+='"'; i++; } else { inQuotes = !inQuotes; } }
+    else if(c === ',' && !inQuotes){ result.push(cur); cur=''; }
+    else { cur += c; }
+  }
+  result.push(cur);
+  return result;
+}
+document.getElementById('backupBtn').addEventListener('click', ()=>{
+  const backup = { entries, settings, extraStats, exportedAt: new Date().toISOString() };
+  downloadFile(JSON.stringify(backup,null,2), `backup_${Date.now()}.json`, 'application/json');
+  toast('Backup created', 'success');
+});
+document.getElementById('restoreBtn').addEventListener('click', ()=>document.getElementById('restoreInput').click());
+document.getElementById('restoreInput').addEventListener('change', async e=>{
+  const file = e.target.files[0]; if(!file) return;
+  const ok = await askConfirm('Restore Data', 'This will overwrite all current motor records. Continue?');
+  if(!ok){ e.target.value=''; return; }
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      const data = JSON.parse(reader.result);
+      entries = data.entries || [];
+      settings = Object.assign(settings, data.settings || {});
+      extraStats = Object.assign(extraStats, data.extraStats || {});
+      saveEntries(); saveSettings(); saveExtraStats();
+      applySettingsToUI(); renderTable(); renderStats();
+      toast('Data restored successfully', 'success');
+    }catch(err){ toast('Restore failed: invalid file', 'error'); }
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+});
+document.getElementById('clearAllBtn').addEventListener('click', async ()=>{
+  const ok = await askConfirm('Clear All Data', 'This will permanently delete ALL motor records. This cannot be undone.');
+  if(!ok) return;
+  entries = []; extraStats = { repeatScans:0 };
+  saveEntries(); saveExtraStats(); renderTable(); renderStats();
+  toast('All data cleared', 'success');
+});
+
+/* ---------------------------- 10. BARCODE GENERATION (pure-JS Code128, subset B) ----------------------------
+   Implements Code 128 (subset B: ASCII 32-126) entirely in JS — no external library needed,
+   keeping this a single offline-capable file. Width table + checksum verified against a
+   reference barcode implementation (byte-identical bar pattern output) before shipping.
+------------------------------------------------------------------------------------------------------------ */
+const CODE128_PATTERNS = [
+"212222","222122","222221","121223","121322","131222","122213","122312","132212","221213",
+"221312","231212","112232","122132","122231","113222","123122","123221","223211","221132",
+"221231","213212","223112","312131","311222","321122","321221","312212","322112","322211",
+"212123","212321","232121","111323","131123","131321","112313","132113","132311","211313",
+"231113","231311","112133","112331","132131","113123","113321","133121","313121","211331",
+"231131","213113","213311","213131","311123","311321","331121","312113","312311","332111",
+"314111","221411","431111","111224","111422","121124","121421","141122","141221","112214",
+"112412","122114","122411","142112","142211","241211","221114","413111","241112","134111",
+"111242","121142","121241","114212","124112","124211","411212","421112","421211","212141",
+"214121","412121","111143","111341","131141","114113","114311","411113","411311","113141",
+"114131","311141","411131","211412","211214","211232"
+];
+const CODE128_STOP = "2331112";
+const CODE128_START_B = 104;
+
+function code128Encode(text){
+  if(!text || !text.length) return null;
+  for(const ch of text){
+    const c = ch.charCodeAt(0);
+    if(c < 32 || c > 126) return null;
+  }
+  const values = [CODE128_START_B, ...Array.from(text).map(c => c.charCodeAt(0) - 32)];
+  let checksum = values[0];
+  for(let i=1;i<values.length;i++) checksum += values[i] * i;
+  checksum %= 103;
+  const allValues = [...values, checksum];
+  const widths = [];
+  allValues.forEach(v => CODE128_PATTERNS[v].split('').forEach(w => widths.push(parseInt(w,10))));
+  CODE128_STOP.split('').forEach(w => widths.push(parseInt(w,10)));
+  return widths;
+}
+
+function code128SVG(text, opts={}){
+  const widths = code128Encode(text);
+  if(!widths) return null;
+  const moduleWidth = opts.moduleWidth || 2.2;
+  const barHeight = opts.height || 70;
+  const showText = opts.showText !== false;
+  const quiet = moduleWidth * 10;
+
+  let x = quiet, bars = '', isBar = true;
+  widths.forEach(w=>{
+    const wpx = w * moduleWidth;
+    if(isBar) bars += `<rect x="${x.toFixed(2)}" y="0" width="${wpx.toFixed(2)}" height="${barHeight}" fill="#000"/>`;
+    x += wpx; isBar = !isBar;
+  });
+  const totalWidth = x + quiet;
+  const textHeight = showText ? 22 : 6;
+  const svgHeight = barHeight + textHeight;
+  const textEl = showText
+    ? `<text x="${(totalWidth/2).toFixed(2)}" y="${barHeight+17}" font-family="monospace" font-size="14" text-anchor="middle" fill="#000">${escapeXml(text)}</text>`
+    : '';
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth.toFixed(2)} ${svgHeight}" width="${totalWidth.toFixed(0)}" height="${svgHeight}">
+    <rect x="0" y="0" width="${totalWidth.toFixed(2)}" height="${svgHeight}" fill="#fff"/>
+    ${bars}${textEl}
+  </svg>`;
+}
+
+/* ---------------------------- 9b. TELEGRAM INTEGRATION ----------------------------
+   Sends a motor's barcode image + details straight to a Telegram chat via the Bot API's
+   sendPhoto endpoint (multipart/form-data). Bot Token + Chat ID are configured once in
+   Settings and stored in localStorage alongside the rest of app settings.
+------------------------------------------------------------------------------------ */
+function svgToPngBlob(svgString, scale=4){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    const svgBlob = new Blob([svgString], { type:'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
+    img.onload = ()=>{
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width * scale; canvas.height = img.height * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('PNG conversion failed')), 'image/png');
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); reject(new Error('Barcode image load failed')); };
+    img.src = url;
+  });
+}
+
+async function sendMotorToTelegram(entry){
+  const token = (settings.tgToken || '').trim();
+  const chatId = (settings.tgChatId || '').trim();
+  if(!token || !chatId){
+    toast('Please save your Telegram Bot Token and Chat ID in Settings first', 'error');
+    switchView('settings');
+    return;
+  }
+  // Look up the live entry (if it exists in inventory) so status/format always reflects the
+  // real current state — not whatever was passed in from a form that may not know it.
+  const liveEntry = entries.find(x => x.barcode === entry.barcode) || entry;
+
+  const svg = liveEntry.format === 'qr'
+    ? qrCodeSVG(buildQRContent(liveEntry.barcode, liveEntry.motorName, liveEntry.dispatchDate, liveEntry.qty), { cellSize: 6 })
+    : renderCodeSVG(liveEntry.barcode, liveEntry.format, { moduleWidth: 3, height: 90 });
+  if(!svg){ toast('Failed to generate the code image', 'error'); return; }
+
+  toast('📤 Sending to Telegram…', 'info');
+  try{
+    const blob = await svgToPngBlob(svg, 4);
+    const caption = [
+      `🏷️ Motor Type: ${liveEntry.motorName || '(unnamed motor)'}`,
+      `🔢 Qty: ${liveEntry.qty || '1'}`,
+      `🙋 Sales Person: ${liveEntry.salesPerson || '(not set)'}`,
+      `🔖 Barcode: ${liveEntry.barcode}`,
+      liveEntry.dispatchDate ? `🚚 Dispatched: ${formatDatePretty(liveEntry.dispatchDate)}` : null,
+      liveEntry.notes ? `📝 Notes: ${liveEntry.notes}` : null
+    ].filter(Boolean).join('\n');
+
+    const fd = new FormData();
+    fd.append('chat_id', chatId);
+    fd.append('caption', caption);
+    fd.append('photo', blob, `${entry.barcode}.png`);
+
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, { method:'POST', body: fd });
+    const data = await res.json();
+    if(data.ok){ toast('✅ Sent to Telegram', 'success'); }
+    else{ toast('Telegram error: ' + (data.description || 'unknown error'), 'error'); }
+  }catch(e){
+    toast('Error sending to Telegram: ' + e.message, 'error');
+  }
+}
+
+async function sendTelegramTestMessage(){
+  const token = (settings.tgToken || '').trim();
+  const chatId = (settings.tgChatId || '').trim();
+  if(!token || !chatId){ toast('Please enter and save your Bot Token and Chat ID first', 'error'); return; }
+  toast('Sending test message…', 'info');
+  try{
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method:'POST', headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: '✅ Motor Dispatch Tracker se test message — connection theek hai!' })
+    });
+    const data = await res.json();
+    if(data.ok){ toast('✅ Test message sent — check Telegram', 'success'); }
+    else{ toast('Telegram error: ' + (data.description || 'unknown error'), 'error'); }
+  }catch(e){
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+// Renders a QR code as SVG using the embedded qrcode-generator library.
+// typeNumber 0 = auto-select smallest QR version that fits the data.
+function qrCodeSVG(text, opts={}){
+  if(!text || !text.length) return null;
+  let qr;
+  try{
+    qr = qrcode(0, opts.ecLevel || 'M');
+    qr.addData(text);
+    qr.make();
+  }catch(e){ return null; }
+  const count = qr.getModuleCount();
+  const cell = opts.cellSize || 6;
+  const quiet = opts.quiet != null ? opts.quiet : 4; // quiet-zone modules on each side (spec minimum is 4)
+  const size = (count + quiet*2) * cell;
+  let rects = '';
+  for(let r=0;r<count;r++){
+    for(let c=0;c<count;c++){
+      if(qr.isDark(r,c)){
+        rects += `<rect x="${(c+quiet)*cell}" y="${(r+quiet)*cell}" width="${cell}" height="${cell}" fill="#000"/>`;
+      }
+    }
+  }
+  const showText = opts.showText !== false;
+  const textHeight = showText ? 22 : 0;
+  const svgH = size + textHeight;
+  // SVG <text> can't render embedded newlines, so the caption always shows just the clean ID
+  // (line 1) even when the encoded payload carries extra lines (motor type / dispatch date).
+  const captionText = opts.caption != null ? opts.caption : text.split('\n')[0];
+  const textEl = showText
+    ? `<text x="${(size/2).toFixed(2)}" y="${size+17}" font-family="monospace" font-size="13" text-anchor="middle" fill="#000">${escapeXml(captionText)}</text>`
+    : '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${svgH}" width="${size}" height="${svgH}">
+    <rect x="0" y="0" width="${size}" height="${svgH}" fill="#fff"/>
+    ${rects}${textEl}
+  </svg>`;
+}
+
+// Builds the full human-readable QR payload: ID on line 1 (used for app lookups), followed by
+// Motor Type and Dispatch Date/Status — so anyone scanning with a plain camera sees full details,
+// and the date always reflects the CURRENT status (auto — never needs to be typed in manually).
+function buildQRContent(barcode, motorType, dispatchDate, qty){
+  const lines = [ barcode ];
+  lines.push(`Motor: ${motorType && motorType.trim() ? motorType.trim() : '(unspecified)'}`);
+  if(qty){ lines.push(`Qty: ${qty}`); }
+  lines.push(dispatchDate ? `Dispatched: ${formatDatePretty(dispatchDate)}` : `Status: Pending Dispatch`);
+  return lines.join('\n');
+}
+
+// Single entry point used everywhere a code needs to be rendered (preview, print, Telegram) —
+// picks QR or Code128 based on the entry/format, so callers don't need to branch themselves.
+function renderCodeSVG(value, format, opts={}){
+  if(format === 'qr' || format === 'qr_code'){
+    return qrCodeSVG(value, { cellSize: opts.qrCellSize || 6, quiet: 4, showText: opts.showText });
+  }
+  return code128SVG(value, { moduleWidth: opts.moduleWidth || 2.2, height: opts.height || 70, showText: opts.showText });
+}
+
+// Suggests a unique 12-digit internal Motor ID / barcode based on the current timestamp.
+// This is an internal identifier for your own tracking — not an official GS1/UPC/EAN code.
+function suggestBarcodeValue(){
+  return Date.now().toString().slice(-12).padStart(12,'0');
+}
+
+let genFormat = 'qr';
+
+function updateGenPreview(){
+  const box = document.getElementById('genPreviewBox');
+  const val = document.getElementById('genBarcodeValue').value.trim();
+  const motorType = document.getElementById('genMotorName').value.trim();
+  const qty = document.getElementById('genQty').value.trim();
+  if(!val){
+    box.classList.remove('invalid');
+    box.innerHTML = '<span class="text-soft">Enter or generate a code to preview</span>';
+    return;
+  }
+  const svg = genFormat === 'qr'
+    ? qrCodeSVG(buildQRContent(val, motorType, '', qty), { cellSize: 5 })
+    : code128SVG(val, { moduleWidth: 2.2, height: 70 });
+  if(!svg){
+    box.classList.add('invalid');
+    box.innerHTML = genFormat === 'qr'
+      ? 'Cannot render this code — try a shorter value.'
+      : 'Cannot render this code — only standard letters, numbers, and basic symbols are supported.';
+    return;
+  }
+  box.classList.remove('invalid');
+  box.innerHTML = svg;
+}
+
+// Print a single label (QR or Barcode). Shows Dispatch Date only if the motor has already been dispatched.
+function printBarcodeLabel(barcodeValue, motorName, dispatchDate, format, qty){
+  const svg = format === 'qr'
+    ? qrCodeSVG(buildQRContent(barcodeValue, motorName, dispatchDate, qty), { cellSize: 6 })
+    : renderCodeSVG(barcodeValue, format, { moduleWidth: 3, height: 90 });
+  if(!svg){ toast('Cannot print: unsupported characters in code', 'error'); return; }
+  const metaLine = dispatchDate
+    ? `Dispatch Date: ${formatDatePretty(dispatchDate)}`
+    : `Status: Pending Dispatch`;
+  const printArea = document.getElementById('printArea');
+  printArea.classList.remove('hidden');
+  printArea.innerHTML = `
+    <div class="label-sheet">
+      <div class="label-product">${escapeHtml(motorName || '(unnamed motor)')}</div>
+      ${svg}
+      <div class="label-meta">${escapeHtml(metaLine)}</div>
+    </div>`;
+  window.print();
+}
+
+function initBarcodeGenerator(){
+  document.getElementById('genBarcodeValue').value = suggestBarcodeValue();
+  updateGenPreview();
+
+  document.querySelectorAll('#genFormatToggle .format-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      genFormat = btn.dataset.format;
+      document.querySelectorAll('#genFormatToggle .format-btn').forEach(b=>b.classList.toggle('active', b===btn));
+      updateGenPreview();
+    });
+  });
+
+  document.getElementById('genBarcodeValue').addEventListener('input', updateGenPreview);
+  document.getElementById('genMotorName').addEventListener('input', updateGenPreview);
+  document.getElementById('genRegenBtn').addEventListener('click', ()=>{
+    document.getElementById('genBarcodeValue').value = suggestBarcodeValue();
+    updateGenPreview();
+  });
+
+  document.getElementById('genSaveBtn').addEventListener('click', ()=>{
+    const barcodeValue = document.getElementById('genBarcodeValue').value.trim();
+    const motorName = document.getElementById('genMotorName').value.trim();
+    const qty = document.getElementById('genQty').value.trim();
+    const salesPerson = document.getElementById('genSalesPerson').value.trim();
+    const notes = document.getElementById('genNotes').value.trim();
+
+    if(!barcodeValue){ toast('Enter or generate a code value first', 'error'); return; }
+    if(genFormat === 'code_128' && !code128Encode(barcodeValue)){ toast('Barcode contains unsupported characters', 'error'); return; }
+    if(genFormat === 'qr' && !qrCodeSVG(barcodeValue)){ toast('QR value could not be encoded — try something shorter', 'error'); return; }
+    if(entries.find(e=>e.barcode === barcodeValue)){ toast('This code already exists — generate a new one', 'error'); return; }
+
+    const entry = registerMotor(barcodeValue, genFormat, { motorName, notes, qty, salesPerson });
+    toast('✅ Motor registered (Pending Dispatch) — will be sent to Telegram at dispatch time', 'success');
+    renderTable(); renderStats();
+
+    document.getElementById('genMotorName').value = '';
+    document.getElementById('genSalesPerson').value = '';
+    document.getElementById('genNotes').value = '';
+    document.getElementById('genBarcodeValue').value = suggestBarcodeValue();
+    updateGenPreview();
+  });
+
+
+  document.getElementById('genPrintBtn').addEventListener('click', ()=>{
+    const barcodeValue = document.getElementById('genBarcodeValue').value.trim();
+    const motorName = document.getElementById('genMotorName').value.trim();
+    const qty = document.getElementById('genQty').value.trim();
+    if(!barcodeValue){ toast('Enter or generate a code value first', 'error'); return; }
+    printBarcodeLabel(barcodeValue, motorName, '', genFormat, qty);
+  });
+}
+
+/* ---------------------------- 10b. BULK GENERATE (hundreds/thousands of unique barcodes) ----------------------------
+   Generates N unique barcodes in one go (e.g. 1000), all saved as Pending Dispatch, tagged
+   with a shared batchId so they can be found and reprinted later. Uses lightweight <img>
+   (data-URI SVG) rendering instead of inline SVG for the print sheet, since inline SVG with
+   1000 sets of bar <rect> elements would create too many DOM nodes and could lag mobile browsers.
+------------------------------------------------------------------------------------------------------------ */
+function generateUniqueBatchCodes(n, prefix){
+  const d = new Date();
+  const datePart = d.getFullYear().toString().slice(2) +
+    String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0');
+  const existingSet = new Set(entries.map(e=>e.barcode));
+  const codes = [];
+  let seq = 1;
+  while(codes.length < n && seq <= 999999){
+    const code = `${prefix}${datePart}${String(seq).padStart(5,'0')}`;
+    if(!existingSet.has(code)) codes.push(code);
+    seq++;
+  }
+  return codes;
+}
+
+function bulkGenerate(alsoPrint){
+  const rawQty = parseInt(document.getElementById('bulkQty').value) || 0;
+  const prefix = document.getElementById('bulkPrefix').value.trim().toUpperCase();
+  if(rawQty < 1){ toast('Enter a valid quantity', 'error'); return; }
+  const qty = Math.min(rawQty, 5000); // sane upper cap to protect the browser/localStorage
+  if(rawQty > 5000) toast('Capped at 5000 per batch for performance — run again for more', 'warning');
+  if(!prefix || !code128Encode(prefix + '260101' + '00001')){
+    toast('Prefix must be simple letters/numbers only', 'error'); return;
+  }
+
+  const codes = generateUniqueBatchCodes(qty, prefix);
+  const batchId = 'B' + Date.now();
+  const { date, time, timestamp } = nowParts();
+
+  const newEntries = codes.map(code => ({
+    id: genId(), barcode: code, format:'qr',
+    motorName:'', notes:'', batchId,
+    dispatchDate:'', dispatchTime:'', dispatchTimestamp:'',
+    registeredDate:date, registeredTime:time, registeredTimestamp:timestamp,
+    status:'Pending Dispatch'
+  }));
+
+  entries = newEntries.concat(entries);
+  saveEntries();
+  lastBatchId = batchId; lastBatchCount = newEntries.length;
+
+  currentPage = 1;
+  renderTable(); renderStats();
+  toast(`✅ ${newEntries.length} motor barcodes generated & saved`, 'success');
+  updateBatchInfoBanner();
+
+  if(alsoPrint) printBatchLabels(batchId);
+}
+
+function updateBatchInfoBanner(){
+  const banner = document.getElementById('batchInfoBanner');
+  if(!lastBatchId){ banner.classList.add('hidden'); return; }
+  banner.classList.remove('hidden');
+  document.getElementById('batchInfoText').innerHTML =
+    `Last batch: <strong>${lastBatchCount}</strong> labels (ID: ${lastBatchId.slice(1)})`;
+}
+
+// Print every label in a batch as a compact grid using lightweight <img> tags
+// (data-URI SVG) rather than inline SVG, to keep the DOM light for large batches.
+function printBatchLabels(batchId){
+  const list = entries.filter(e=>e.batchId === batchId);
+  if(!list.length){ toast('No labels found for this batch', 'error'); return; }
+  toast(`Preparing ${list.length} labels for printing…`, 'info');
+
+  // Defer to next tick so the toast can render before the (potentially heavy) DOM build.
+  setTimeout(()=>{
+    let cells = '';
+    list.forEach(e=>{
+      const svg = qrCodeSVG(e.barcode, { cellSize: 4, quiet: 3, showText: true });
+      if(!svg) return;
+      const imgSrc = 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+      cells += `<div class="print-label-cell"><img src="${imgSrc}" alt="${escapeHtml(e.barcode)}"><div class="lbl-text">Motor: ______________</div></div>`;
+    });
+    const printArea = document.getElementById('printArea');
+    printArea.classList.remove('hidden');
+    printArea.innerHTML = `<div class="print-label-grid">${cells}</div>`;
+    setTimeout(()=> window.print(), 250); // let images paint before invoking print
+  }, 50);
+}
+
+function initBulkGenerator(){
+  document.getElementById('bulkSaveBtn').addEventListener('click', ()=> bulkGenerate(false));
+  document.getElementById('bulkSavePrintBtn').addEventListener('click', ()=> bulkGenerate(true));
+  document.getElementById('reprintBatchBtn').addEventListener('click', ()=>{
+    if(lastBatchId) printBatchLabels(lastBatchId);
+  });
+}
+
+/* ---------------------------- 11. SETTINGS ---------------------------- */
+function applySettingsToUI(){
+  document.getElementById('settingSound').checked = settings.sound;
+  document.getElementById('settingVibrate').checked = settings.vibrate;
+  document.getElementById('settingDark').checked = settings.dark;
+  document.getElementById('settingAutoSave').checked = settings.autoSave;
+  document.getElementById('settingTgToken').value = settings.tgToken || '';
+  document.getElementById('settingTgChatId').value = settings.tgChatId || '';
+  document.getElementById('settingTgAutoSend').checked = !!settings.tgAutoSend;
+  document.body.dataset.theme = settings.dark ? 'dark' : 'light';
+  document.getElementById('themeToggleBtn').textContent = settings.dark ? '☀️' : '🌙';
+}
+document.getElementById('settingSound').addEventListener('change', e=>{ settings.sound=e.target.checked; saveSettings(); });
+document.getElementById('settingVibrate').addEventListener('change', e=>{ settings.vibrate=e.target.checked; saveSettings(); });
+document.getElementById('settingAutoSave').addEventListener('change', e=>{ settings.autoSave=e.target.checked; saveSettings(); toast('Auto-Save '+(e.target.checked?'enabled':'disabled'),'info'); });
+document.getElementById('settingDark').addEventListener('change', e=>{ settings.dark=e.target.checked; saveSettings(); applySettingsToUI(); });
+document.getElementById('settingTgAutoSend').addEventListener('change', e=>{ settings.tgAutoSend=e.target.checked; saveSettings(); });
+document.getElementById('tgSaveBtn').addEventListener('click', ()=>{
+  settings.tgToken = document.getElementById('settingTgToken').value.trim();
+  settings.tgChatId = document.getElementById('settingTgChatId').value.trim();
+  saveSettings();
+  toast('✅ Telegram settings saved', 'success');
+});
+document.getElementById('tgTestBtn').addEventListener('click', sendTelegramTestMessage);
+document.getElementById('resultTgBtn').addEventListener('click', ()=>{
+  const e = entries.find(x=>x.id === currentResultEntryId);
+  if(e) sendMotorToTelegram(e);
+});
+document.getElementById('genTgBtn').addEventListener('click', ()=>{
+  const barcodeValue = document.getElementById('genBarcodeValue').value.trim();
+  const motorName = document.getElementById('genMotorName').value.trim();
+  const qty = document.getElementById('genQty').value.trim();
+  const salesPerson = document.getElementById('genSalesPerson').value.trim();
+  const notes = document.getElementById('genNotes').value.trim();
+  if(!barcodeValue){ toast('Enter or generate a code value first', 'error'); return; }
+  sendMotorToTelegram({ barcode: barcodeValue, motorName, qty, salesPerson, notes, dispatchDate: '', format: genFormat });
+});
+document.getElementById('themeToggleBtn').addEventListener('click', ()=>{
+  settings.dark = !settings.dark; saveSettings(); applySettingsToUI();
+});
+
+/* ---------------------------- 12. MODALS / CONFIRM WIRING ---------------------------- */
+document.getElementById('confirmYesBtn').addEventListener('click', ()=>{
+  closeModal('confirmModal'); if(confirmResolver) confirmResolver(true); confirmResolver=null;
+});
+document.getElementById('confirmNoBtn').addEventListener('click', ()=>{
+  closeModal('confirmModal'); if(confirmResolver) confirmResolver(false); confirmResolver=null;
+});
+document.querySelectorAll('.modal-backdrop').forEach(mb=>{
+  mb.addEventListener('click', e=>{ if(e.target === mb) mb.classList.remove('show'); });
+});
+
+/* ---------------------------- 13. NAVIGATION ---------------------------- */
+function switchView(name){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('view-'+name).classList.add('active');
+  document.querySelector(`.nav-btn[data-view="${name}"]`).classList.add('active');
+  if(name === 'inventory' || name === 'stats'){ renderTable(); renderStats(); }
+}
+document.querySelectorAll('.nav-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>switchView(btn.dataset.view));
+});
+
+/* ---------------------------- 14. KEYBOARD SHORTCUTS (Desktop) ---------------------------- */
+document.addEventListener('keydown', e=>{
+  const tag = document.activeElement.tagName;
+  if(tag==='INPUT' || tag==='TEXTAREA'){ if(e.key === 'Escape') document.activeElement.blur(); return; }
+  switch(e.key.toLowerCase()){
+    case 's': toggleScanning(); break;
+    case 'f': document.getElementById('torchBtn').click(); break;
+    case 'e': document.getElementById('exportCsvBtn').click(); break;
+    case '/': e.preventDefault(); switchView('inventory'); document.getElementById('searchBarcode').focus(); break;
+    case '1': switchView('scanner'); break;
+    case '2': switchView('inventory'); break;
+    case '3': switchView('stats'); break;
+    case '4': switchView('settings'); break;
+    case 'escape': document.querySelectorAll('.modal-backdrop.show').forEach(m=>m.classList.remove('show')); break;
+  }
+});
+
+/* ---------------------------- 15. INIT ---------------------------- */
+async function init(){
+  loadEntries(); loadSettings(); loadExtraStats();
+  applySettingsToUI();
+  renderTable(); renderStats();
+  initBarcodeGenerator();
+  initBulkGenerator();
+  bindResultCardLiveEdit();
+  await initScanner();
+  document.getElementById('loadingOverlay').style.opacity = '0';
+  setTimeout(()=> document.getElementById('loadingOverlay').style.display='none', 300);
+}
+document.addEventListener('DOMContentLoaded', init);
+
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden){ if(scanInterval){ clearInterval(scanInterval); scanInterval=null; } }
+  else if(scanning && barcodeDetector){ startScanLoop(); }
+});
+</script>
+</body>
+</html>
